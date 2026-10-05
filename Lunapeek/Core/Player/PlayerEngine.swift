@@ -33,6 +33,10 @@ public final class PlayerEngine {
     private var isDecoding = false
     private var shouldStop = false
 
+    public var videoRendererLayer: CALayer? {
+        return videoRenderer?.layer
+    }
+
     public init(
         demuxer: DemuxerPlugin,
         videoDecoder: VideoDecoderPlugin,
