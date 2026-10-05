@@ -85,7 +85,9 @@ Lunapeek/
 
 ## License
 
-AGPL-3.0-or-later
+This project is licensed under the **GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)**, with an **additional permission under Section 7** allowing distribution through app stores under certain conditions.
+
+See [LICENSE](LICENSE) for the full license text and the exact wording of the additional permission.
 
 ## Copyright
 
