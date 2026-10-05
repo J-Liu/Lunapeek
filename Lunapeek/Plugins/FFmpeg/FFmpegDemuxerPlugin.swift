@@ -50,6 +50,13 @@ public final class FFmpegDemuxerPlugin: DemuxerPlugin {
     }
 
     public static func supports(url: URL) -> Bool {
+        // Support network protocols via FFmpeg
+        let supportedSchemes = ["sftp", "smb", "http", "https", "rtmp", "rtsp"]
+        if let scheme = url.scheme?.lowercased(), supportedSchemes.contains(scheme) {
+            return true
+        }
+
+        // Support local file formats
         let pathExtension = url.pathExtension.lowercased()
         let supportedFormats = [
             "mkv", "webm", "flv", "ts", "mts", "m2ts",
