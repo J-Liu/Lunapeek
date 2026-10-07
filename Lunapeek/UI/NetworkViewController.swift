@@ -165,10 +165,8 @@ final class NetworkViewController: UIViewController {
             }
         }
 
-        let currentUsername = NSUserName()
         alert.addTextField { textField in
             textField.placeholder = "Username"
-            textField.text = currentUsername
             textField.autocapitalizationType = .none
         }
 
@@ -231,11 +229,8 @@ final class NetworkViewController: UIViewController {
             }
         }
 
-        let currentUsername = NSUserName()
-
         alert.addTextField { textField in
             textField.placeholder = "Username"
-            textField.text = currentUsername
             textField.autocapitalizationType = .none
         }
 
@@ -293,9 +288,14 @@ final class NetworkViewController: UIViewController {
                             password: password,
                             port: port
                         )
-                        self?.savedServers.append(saved)
-                        SavedServer.save(self?.savedServers ?? [])
-                        self?.tableView.reloadData()
+
+                        // Only add if not already saved
+                        if self?.savedServers.first(where: { $0.address == host }) == nil {
+                            self?.savedServers.append(saved)
+                            SavedServer.save(self?.savedServers ?? [])
+                            self?.tableView.reloadData()
+                        }
+
                         self?.browseFiles(server: saved)
                     } else {
                         let alert = UIAlertController(
@@ -312,7 +312,8 @@ final class NetworkViewController: UIViewController {
     }
 
     private func browseFiles(server: SavedServer) {
-        print("Browse files on \(server.name)")
+        let browserVC = RemoteFileBrowserViewController(server: server)
+        navigationController?.pushViewController(browserVC, animated: true)
     }
 
     private func removeServer(at index: Int) {
