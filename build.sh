@@ -3,8 +3,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FFMPEG_KIT_DIR="ffmpeg-kit"
-RELEASE_TAG="v6.0"
+FFMPEG_KIT_DIR="ffmpeg-kit-next"
+VERSION="9.0.0"
+TARBALL_URL="https://github.com/arthenica/ffmpeg-kit-next/archive/refs/tags/v${VERSION}.tar.gz"
 
 cd "$SCRIPT_DIR"
 
@@ -15,38 +16,30 @@ if ! command -v pkg-config &> /dev/null; then
     brew install pkg-config
 fi
 
-# Install zlib for pkg-config
 if ! brew list zlib &> /dev/null 2>&1; then
     echo "Installing zlib..."
     brew install zlib
 fi
 
-# Clone ffmpeg-kit if not exists
+# Download and extract tarball
 if [ ! -d "$FFMPEG_KIT_DIR" ]; then
-    echo "Cloning ffmpeg-kit with tag $RELEASE_TAG..."
-    git clone --branch "$RELEASE_TAG" --depth 1 https://github.com/arthenica/ffmpeg-kit.git "$FFMPEG_KIT_DIR"
+    echo "Downloading ffmpeg-kit-next v${VERSION} tarball..."
+    curl -L -o "/tmp/ffmpeg-kit-next-${VERSION}.tar.gz" "$TARBALL_URL"
+    echo "Extracting..."
+    tar -xzf "/tmp/ffmpeg-kit-next-${VERSION}.tar.gz" -C "/tmp"
+    mv "/tmp/ffmpeg-kit-next-${VERSION}" "$FFMPEG_KIT_DIR"
+    rm "/tmp/ffmpeg-kit-next-${VERSION}.tar.gz"
 else
-    echo "ffmpeg-kit directory exists, checking version..."
-    cd "$FFMPEG_KIT_DIR"
-    CURRENT_TAG=$(git describe --tags 2>/dev/null || echo "unknown")
-    if [ "$CURRENT_TAG" != "$RELEASE_TAG" ]; then
-        echo "Updating to $RELEASE_TAG..."
-        git fetch --tags --depth 1 origin "$RELEASE_TAG" || true
-        git checkout "$RELEASE_TAG" || true
-    fi
-    cd "$SCRIPT_DIR"
+    echo "ffmpeg-kit-next directory exists, skipping download"
 fi
 
 cd "$FFMPEG_KIT_DIR"
 
 # Build iOS xcframework with full package (LGPL)
-# Includes: dav1d, fontconfig, freetype, fribidi, gmp, gnutls, kvazaar, lame,
-#           libass, libiconv, libilbc, libtheora, libvorbis, libvpx, libwebp,
-#           libxml2, opencore-amr, opus, shine, snappy, soxr, speex, twolame,
-#           vo-amrwbenc, zimg
 echo ""
 echo "Building FFmpeg for iOS..."
 echo "Package: full (LGPL 3.0)"
+echo "Version: ${VERSION}"
 echo "Features: VideoToolbox, AudioToolbox, AVFoundation, network support"
 echo ""
 
