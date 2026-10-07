@@ -6,6 +6,17 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXCopyFilesBuildPhase section */
+		08D82BF53076F54E00A6F143 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = Frameworks;
+			files = (
+			);
+			name = "Embed Frameworks";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		08F3D6BE30733F2100B0FE4B /* Lunapeek.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lunapeek.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -20,11 +31,39 @@
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		08D82BF63076F54F00A6F143 /* Exceptions for "Lunapeek" folder in "Embed Frameworks" phase from "Lunapeek" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				ffmpegkit.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				libavcodec.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				libavdevice.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				libavfilter.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				libavformat.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				libavutil.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				libswresample.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				libswscale.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+			};
+			buildPhase = 08D82BF53076F54E00A6F143 /* Embed Frameworks */;
+			membershipExceptions = (
+				ffmpegkit.xcframework,
+				libavcodec.xcframework,
+				libavdevice.xcframework,
+				libavfilter.xcframework,
+				libavformat.xcframework,
+				libavutil.xcframework,
+				libswresample.xcframework,
+				libswscale.xcframework,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		08F3D6C030733F2100B0FE4B /* Lunapeek */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				08F3D6D030733F2200B0FE4B /* Exceptions for "Lunapeek" folder in "Lunapeek" target */,
+				08D82BF63076F54F00A6F143 /* Exceptions for "Lunapeek" folder in "Embed Frameworks" phase from "Lunapeek" target */,
 			);
 			path = Lunapeek;
 			sourceTree = "<group>";
@@ -66,6 +105,7 @@
 				08F3D6BA30733F2100B0FE4B /* Sources */,
 				08F3D6BB30733F2100B0FE4B /* Frameworks */,
 				08F3D6BC30733F2100B0FE4B /* Resources */,
+				08D82BF53076F54E00A6F143 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
