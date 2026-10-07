@@ -35,6 +35,21 @@ fi
 
 cd "$FFMPEG_KIT_DIR"
 
+# Set GNU sed path
+if command -v gsed &> /dev/null; then
+    export SED=$(which gsed)
+elif [ -x "/opt/homebrew/opt/gnu-sed/libexec/gnubin/sed" ]; then
+    export SED="/opt/homebrew/opt/gnu-sed/libexec/gnubin/sed"
+elif [ -x "/usr/local/opt/gnu-sed/libexec/gnubin/sed" ]; then
+    export SED="/usr/local/opt/gnu-sed/libexec/gnubin/sed"
+else
+    echo "ERROR: GNU sed not found"
+    echo "Install with: brew install gnu-sed"
+    exit 1
+fi
+
+echo "Using GNU sed: $SED"
+
 # Build iOS xcframework with full package (LGPL)
 echo ""
 echo "Building FFmpeg for iOS..."
