@@ -75,7 +75,6 @@ echo ""
 
 ./ios.sh \
     -x \
-    --target ios 18.6 \
     --enable-ios-videotoolbox \
     --enable-ios-audiotoolbox \
     --enable-ios-avfoundation \
