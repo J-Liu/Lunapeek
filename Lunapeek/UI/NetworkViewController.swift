@@ -11,6 +11,8 @@ final class NetworkViewController: UIViewController {
     private var savedServers: [SavedServer] = []
     private var isScanning = false
     private var scanTimer: Timer?
+    private var smbBrowser: NetServiceBrowser?
+    private var sftpBrowser: NetServiceBrowser?
 
     private lazy var tableView: UITableView = {
         let tv = UITableView(frame: .zero, style: .insetGrouped)
@@ -38,6 +40,13 @@ final class NetworkViewController: UIViewController {
     private func setupUI() {
         title = "Network"
         view.backgroundColor = .systemBackground
+
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "plus"),
+            style: .plain,
+            target: self,
+            action: #selector(addManual)
+        )
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "arrow.clockwise"),
@@ -81,22 +90,113 @@ final class NetworkViewController: UIViewController {
     }
 
     private func discoverSMBServers() {
-        let browser = NetServiceBrowser()
-        browser.searchForServices(ofType: "_smb._tcp.", inDomain: "local.")
-        browser.delegate = self
-        objc_setAssociatedObject(self, &smbBrowserKey, browser, .OBJC_ASSOCIATION_RETAIN)
+        smbBrowser = NetServiceBrowser()
+        smbBrowser?.delegate = self
+        smbBrowser?.searchForServices(ofType: "_smb._tcp.", inDomain: "local.")
+
+        // Also try _afpovertcp for macOS file sharing
+        let afpBrowser = NetServiceBrowser()
+        afpBrowser.delegate = self
+        afpBrowser.searchForServices(ofType: "_afpovertcp._tcp.", inDomain: "local.")
+        objc_setAssociatedObject(self, &afpBrowserKey, afpBrowser, .OBJC_ASSOCIATION_RETAIN)
     }
 
     private func discoverSFTPServers() {
-        let browser = NetServiceBrowser()
-        browser.searchForServices(ofType: "_sftp-ssh._tcp.", inDomain: "local.")
-        browser.delegate = self
-        objc_setAssociatedObject(self, &sftpBrowserKey, browser, .OBJC_ASSOCIATION_RETAIN)
+        sftpBrowser = NetServiceBrowser()
+        sftpBrowser?.delegate = self
+        sftpBrowser?.searchForServices(ofType: "_sftp-ssh._tcp.", inDomain: "local.")
+
+        // Also try _ssh for standard SSH
+        let sshBrowser = NetServiceBrowser()
+        sshBrowser.delegate = self
+        sshBrowser.searchForServices(ofType: "_ssh._tcp.", inDomain: "local.")
+        objc_setAssociatedObject(self, &sshBrowserKey, sshBrowser, .OBJC_ASSOCIATION_RETAIN)
     }
 
     @objc private func refresh() {
         discoveredServers.removeAll()
         startDiscovery()
+    }
+
+    @objc private func addManual() {
+        let alert = UIAlertController(title: "Add Server", message: nil, preferredStyle: .actionSheet)
+
+        alert.addAction(UIAlertAction(title: "SMB/CIFS", style: .default) { [weak self] _ in
+            self?.showManualConfig(type: .smb)
+        })
+
+        alert.addAction(UIAlertAction(title: "SFTP/SSH", style: .default) { [weak self] _ in
+            self?.showManualConfig(type: .sftp)
+        })
+
+        alert.addAction(UIAlertAction(title: "WebDAV", style: .default) { [weak self] _ in
+            self?.showManualConfig(type: .webdav)
+        })
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        if let popover = alert.popoverPresentationController {
+            popover.barButtonItem = navigationItem.leftBarButtonItem
+        }
+        present(alert, animated: true)
+    }
+
+    private func showManualConfig(type: ServerType) {
+        let title: String
+        switch type {
+        case .smb: title = "SMB Server"
+        case .sftp: title = "SFTP Server"
+        case .webdav: title = "WebDAV Server"
+        }
+
+        let alert = UIAlertController(title: title, message: nil, preferredStyle: .alert)
+
+        alert.addTextField { textField in
+            textField.placeholder = "Host"
+            textField.autocapitalizationType = .none
+            textField.autocorrectionType = .no
+        }
+
+        if type == .sftp {
+            alert.addTextField { textField in
+                textField.placeholder = "Port (22)"
+                textField.keyboardType = .numberPad
+                textField.text = "22"
+            }
+        }
+
+        let currentUsername = NSUserName()
+        alert.addTextField { textField in
+            textField.placeholder = "Username"
+            textField.text = currentUsername
+            textField.autocapitalizationType = .none
+        }
+
+        alert.addTextField { textField in
+            textField.placeholder = "Password"
+            textField.isSecureTextEntry = true
+        }
+
+        alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
+            let host = alert.textFields?.first?.text ?? ""
+            let username = alert.textFields?.first(where: { $0.placeholder?.contains("Username") == true })?.text ?? ""
+            let password = alert.textFields?.first(where: { $0.placeholder == "Password" })?.text ?? ""
+            var port: Int? = nil
+            if type == .sftp {
+                port = Int(alert.textFields?.first(where: { $0.placeholder?.contains("Port") == true })?.text ?? "22")
+            }
+
+            self?.connectWithCredentials(
+                host: host,
+                type: type,
+                username: username,
+                password: password,
+                port: port
+            )
+        })
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
 
     private func connect(to server: NetworkServer) {
@@ -225,39 +325,33 @@ final class NetworkViewController: UIViewController {
 private var smbBrowserKey: UInt8 = 0
 private var sftpBrowserKey: UInt8 = 0
 
+private var afpBrowserKey: UInt8 = 0
+private var sshBrowserKey: UInt8 = 0
+
 extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
         service.delegate = self
         service.resolve(withTimeout: 5.0)
     }
 
+    func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
+        print("Discovery error: \(errorDict)")
+    }
+
     func netServiceDidResolve(_ sender: NetService) {
-        let type: ServerType
+        var type: ServerType?
+
         if sender.type.contains("smb") {
             type = .smb
-        } else if sender.type.contains("sftp") {
+        } else if sender.type.contains("sftp") || sender.type.contains("ssh") {
             type = .sftp
-        } else {
-            return
+        } else if sender.type.contains("afpovertcp") {
+            type = .smb  // Treat AFP as file server
         }
 
-        let address = sender.addresses?.first.flatMap { data -> String? in
-            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            _ = data.withUnsafeBytes { ptr in
-                if let addr = ptr.baseAddress {
-                    getnameinfo(
-                        addr.assumingMemoryBound(to: sockaddr.self),
-                        socklen_t(data.count),
-                        &hostname,
-                        socklen_t(hostname.count),
-                        nil,
-                        0,
-                        NI_NUMERICHOST
-                    )
-                }
-            }
-            return String(cString: hostname)
-        } ?? sender.name
+        guard let type = type else { return }
+
+        let address = resolveAddress(for: sender)
 
         let server = NetworkServer(
             name: sender.name,
@@ -273,6 +367,42 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
                 self.tableView.reloadData()
             }
         }
+    }
+
+    private func resolveAddress(for service: NetService) -> String {
+        guard let addresses = service.addresses, !addresses.isEmpty else {
+            return service.name
+        }
+
+        for data in addresses {
+            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            data.withUnsafeBytes { ptr in
+                if let addr = ptr.baseAddress {
+                    let result = getnameinfo(
+                        addr.assumingMemoryBound(to: sockaddr.self),
+                        socklen_t(data.count),
+                        &hostname,
+                        socklen_t(hostname.count),
+                        nil,
+                        0,
+                        NI_NUMERICHOST
+                    )
+                    if result == 0 {
+                        let ip = String(cString: hostname)
+                        // Prefer IPv4
+                        if !ip.contains(":") {
+                            return
+                        }
+                    }
+                }
+            }
+            let ip = String(cString: hostname)
+            if !ip.isEmpty {
+                return ip
+            }
+        }
+
+        return service.name
     }
 }
 
