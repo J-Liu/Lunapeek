@@ -1,2 +1,3 @@
 .cache
 ffmpeg-kit-next-9.0.0/
+*.xcframework/
