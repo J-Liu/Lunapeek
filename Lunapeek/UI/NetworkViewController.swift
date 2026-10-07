@@ -3,16 +3,36 @@
 // Licensed under AGPL-3.0-or-later with an additional permission
 // under Section 7. See LICENSE for details.
 
+import Foundation
 import UIKit
 
 final class NetworkViewController: UIViewController {
-    private var servers: [NetworkServer] = []
-    private var tableView: UITableView!
+    private var discoveredServers: [NetworkServer] = []
+    private var savedServers: [SavedServer] = []
+    private var isScanning = false
+    private var scanTimer: Timer?
+
+    private lazy var tableView: UITableView = {
+        let tv = UITableView(frame: .zero, style: .insetGrouped)
+        tv.backgroundColor = .systemBackground
+        tv.delegate = self
+        tv.dataSource = self
+        tv.register(ServerCell.self, forCellReuseIdentifier: "ServerCell")
+        tv.register(ScanningCell.self, forCellReuseIdentifier: "ScanningCell")
+        tv.translatesAutoresizingMaskIntoConstraints = false
+        return tv
+    }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        loadServers()
+        loadSavedServers()
+        startDiscovery()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopDiscovery()
     }
 
     private func setupUI() {
@@ -20,18 +40,12 @@ final class NetworkViewController: UIViewController {
         view.backgroundColor = .systemBackground
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "plus"),
+            image: UIImage(systemName: "arrow.clockwise"),
             style: .plain,
             target: self,
-            action: #selector(addServer)
+            action: #selector(refresh)
         )
 
-        tableView = UITableView(frame: .zero, style: .insetGrouped)
-        tableView.backgroundColor = .systemBackground
-        tableView.delegate = self
-        tableView.dataSource = self
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "ServerCell")
-        tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
 
         NSLayoutConstraint.activate([
@@ -42,81 +56,86 @@ final class NetworkViewController: UIViewController {
         ])
     }
 
-    private func loadServers() {
-        // TODO: Load saved servers
-        servers = []
+    private func loadSavedServers() {
+        savedServers = SavedServer.load()
         tableView.reloadData()
     }
 
-    @objc private func addServer() {
-        let alert = UIAlertController(title: "Add Server", message: nil, preferredStyle: .actionSheet)
+    private func startDiscovery() {
+        isScanning = true
+        tableView.reloadData()
 
-        alert.addAction(UIAlertAction(title: "SMB/CIFS", style: .default) { [weak self] _ in
-            self?.showSMBConfig()
-        })
+        discoverSMBServers()
+        discoverSFTPServers()
 
-        alert.addAction(UIAlertAction(title: "SFTP", style: .default) { [weak self] _ in
-            self?.showSFTPConfig()
-        })
-
-        alert.addAction(UIAlertAction(title: "WebDAV", style: .default) { [weak self] _ in
-            self?.showWebDAVConfig()
-        })
-
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-
-        if let popover = alert.popoverPresentationController {
-            popover.barButtonItem = navigationItem.rightBarButtonItem
+        scanTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+            self?.stopDiscovery()
         }
-        present(alert, animated: true)
     }
 
-    private func showSMBConfig() {
-        let alert = UIAlertController(title: "SMB Server", message: nil, preferredStyle: .alert)
-
-        alert.addTextField { textField in
-            textField.placeholder = "Server Address"
-            textField.autocapitalizationType = .none
-        }
-
-        alert.addTextField { textField in
-            textField.placeholder = "Share Name"
-            textField.autocapitalizationType = .none
-        }
-
-        alert.addTextField { textField in
-            textField.placeholder = "Username (optional)"
-            textField.autocapitalizationType = .none
-        }
-
-        alert.addTextField { textField in
-            textField.placeholder = "Password (optional)"
-            textField.isSecureTextEntry = true
-        }
-
-        alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
-            // TODO: Save and connect
-        })
-
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
+    private func stopDiscovery() {
+        isScanning = false
+        scanTimer?.invalidate()
+        scanTimer = nil
+        tableView.reloadData()
     }
 
-    private func showSFTPConfig() {
-        let alert = UIAlertController(title: "SFTP Server", message: nil, preferredStyle: .alert)
+    private func discoverSMBServers() {
+        let browser = NetServiceBrowser()
+        browser.searchForServices(ofType: "_smb._tcp.", inDomain: "local.")
+        browser.delegate = self
+        objc_setAssociatedObject(self, &smbBrowserKey, browser, .OBJC_ASSOCIATION_RETAIN)
+    }
 
-        alert.addTextField { textField in
-            textField.placeholder = "Server Address"
-            textField.autocapitalizationType = .none
+    private func discoverSFTPServers() {
+        let browser = NetServiceBrowser()
+        browser.searchForServices(ofType: "_sftp-ssh._tcp.", inDomain: "local.")
+        browser.delegate = self
+        objc_setAssociatedObject(self, &sftpBrowserKey, browser, .OBJC_ASSOCIATION_RETAIN)
+    }
+
+    @objc private func refresh() {
+        discoveredServers.removeAll()
+        startDiscovery()
+    }
+
+    private func connect(to server: NetworkServer) {
+        if let saved = savedServers.first(where: { $0.address == server.address }) {
+            connectWithCredentials(
+                host: saved.address,
+                type: saved.type,
+                username: saved.username,
+                password: saved.password,
+                port: saved.port
+            )
+            return
+        }
+        showCredentialPrompt(for: server)
+    }
+
+    private func showCredentialPrompt(for server: NetworkServer) {
+        let title: String
+        switch server.type {
+        case .smb: title = "SMB Login"
+        case .sftp: title = "SFTP Login"
+        case .webdav: title = "WebDAV Login"
         }
 
-        alert.addTextField { textField in
-            textField.placeholder = "Port (22)"
-            textField.keyboardType = .numberPad
+        let alert = UIAlertController(title: title, message: server.address, preferredStyle: .alert)
+
+        if server.type == .sftp {
+            alert.addTextField { textField in
+                textField.placeholder = "Port"
+                textField.text = "\(server.port ?? 22)"
+                textField.keyboardType = .numberPad
+            }
         }
+
+        let currentUsername = NSUserName()
 
         alert.addTextField { textField in
             textField.placeholder = "Username"
+            textField.text = currentUsername
             textField.autocapitalizationType = .none
         }
 
@@ -126,67 +145,225 @@ final class NetworkViewController: UIViewController {
         }
 
         alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
-            // TODO: Save and connect
+            let username = alert.textFields?.first(where: { $0.placeholder == "Username" })?.text ?? ""
+            let password = alert.textFields?.first(where: { $0.placeholder == "Password" })?.text ?? ""
+            var port: Int? = nil
+            if server.type == .sftp {
+                port = Int(alert.textFields?.first(where: { $0.placeholder == "Port" })?.text ?? "22")
+            }
+
+            self?.connectWithCredentials(
+                host: server.address,
+                type: server.type,
+                username: username,
+                password: password,
+                port: port
+            )
         })
 
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
     }
 
-    private func showWebDAVConfig() {
-        let alert = UIAlertController(title: "WebDAV Server", message: nil, preferredStyle: .alert)
+    private func connectWithCredentials(
+        host: String,
+        type: ServerType,
+        username: String,
+        password: String,
+        port: Int?
+    ) {
+        let loading = UIAlertController(title: "Connecting...", message: nil, preferredStyle: .alert)
+        present(loading, animated: true)
 
-        alert.addTextField { textField in
-            textField.placeholder = "URL"
-            textField.autocapitalizationType = .none
-            textField.keyboardType = .URL
+        Task {
+            var success = true
+            var errorMessage: String?
+
+            // TODO: Actual connection test
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
+            await MainActor.run {
+                loading.dismiss(animated: true) { [weak self] in
+                    if success {
+                        let saved = SavedServer(
+                            name: host,
+                            address: host,
+                            type: type,
+                            username: username,
+                            password: password,
+                            port: port
+                        )
+                        self?.savedServers.append(saved)
+                        SavedServer.save(self?.savedServers ?? [])
+                        self?.tableView.reloadData()
+                        self?.browseFiles(server: saved)
+                    } else {
+                        let alert = UIAlertController(
+                            title: "Connection Failed",
+                            message: errorMessage ?? "Unknown error",
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self?.present(alert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private func browseFiles(server: SavedServer) {
+        print("Browse files on \(server.name)")
+    }
+
+    private func removeServer(at index: Int) {
+        savedServers.remove(at: index)
+        SavedServer.save(savedServers)
+        tableView.reloadData()
+    }
+}
+
+private var smbBrowserKey: UInt8 = 0
+private var sftpBrowserKey: UInt8 = 0
+
+extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
+    func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+        service.delegate = self
+        service.resolve(withTimeout: 5.0)
+    }
+
+    func netServiceDidResolve(_ sender: NetService) {
+        let type: ServerType
+        if sender.type.contains("smb") {
+            type = .smb
+        } else if sender.type.contains("sftp") {
+            type = .sftp
+        } else {
+            return
         }
 
-        alert.addTextField { textField in
-            textField.placeholder = "Username (optional)"
-            textField.autocapitalizationType = .none
+        let address = sender.addresses?.first.flatMap { data -> String? in
+            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            _ = data.withUnsafeBytes { ptr in
+                if let addr = ptr.baseAddress {
+                    getnameinfo(
+                        addr.assumingMemoryBound(to: sockaddr.self),
+                        socklen_t(data.count),
+                        &hostname,
+                        socklen_t(hostname.count),
+                        nil,
+                        0,
+                        NI_NUMERICHOST
+                    )
+                }
+            }
+            return String(cString: hostname)
+        } ?? sender.name
+
+        let server = NetworkServer(
+            name: sender.name,
+            address: address,
+            type: type,
+            port: sender.port
+        )
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if !self.discoveredServers.contains(where: { $0.address == address }) {
+                self.discoveredServers.append(server)
+                self.tableView.reloadData()
+            }
         }
-
-        alert.addTextField { textField in
-            textField.placeholder = "Password (optional)"
-            textField.isSecureTextEntry = true
-        }
-
-        alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
-            // TODO: Save and connect
-        })
-
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
     }
 }
 
 extension NetworkViewController: UITableViewDataSource, UITableViewDelegate {
+    func numberOfSections(in tableView: UITableView) -> Int {
+        var sections = 1
+        if !savedServers.isEmpty { sections += 1 }
+        if !discoveredServers.isEmpty || isScanning { sections += 1 }
+        return sections
+    }
+
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        let hasSaved = !savedServers.isEmpty
+        let hasDiscovered = !discoveredServers.isEmpty || isScanning
+
+        if hasSaved && section == 0 { return "Saved Servers" }
+        if hasSaved && hasDiscovered && section == 1 { return "Discovered" }
+        if !hasSaved && hasDiscovered && section == 0 { return "Discovered" }
+        return nil
+    }
+
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return servers.count
+        let hasSaved = !savedServers.isEmpty
+        let hasDiscovered = !discoveredServers.isEmpty || isScanning
+
+        if hasSaved && section == 0 { return savedServers.count }
+        if hasSaved && hasDiscovered && section == 1 {
+            if isScanning && discoveredServers.isEmpty { return 1 }
+            return discoveredServers.count
+        }
+        if !hasSaved && hasDiscovered && section == 0 {
+            if isScanning && discoveredServers.isEmpty { return 1 }
+            return discoveredServers.count
+        }
+        return 0
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "ServerCell", for: indexPath)
-        let server = servers[indexPath.row]
-        var config = cell.defaultContentConfiguration()
-        config.text = server.name
-        config.secondaryText = server.address
-        config.image = UIImage(systemName: server.type.icon)
-        cell.contentConfiguration = config
-        cell.accessoryType = .disclosureIndicator
+        let hasSaved = !savedServers.isEmpty
+        let hasDiscovered = !discoveredServers.isEmpty || isScanning
+
+        // Scanning indicator
+        if hasSaved && hasDiscovered && indexPath.section == 1 && isScanning && discoveredServers.isEmpty {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "ScanningCell", for: indexPath) as! ScanningCell
+            cell.configure()
+            return cell
+        }
+        if !hasSaved && hasDiscovered && indexPath.section == 0 && isScanning && discoveredServers.isEmpty {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "ScanningCell", for: indexPath) as! ScanningCell
+            cell.configure()
+            return cell
+        }
+
+        let cell = tableView.dequeueReusableCell(withIdentifier: "ServerCell", for: indexPath) as! ServerCell
+
+        if hasSaved && indexPath.section == 0 {
+            let server = savedServers[indexPath.row]
+            cell.configure(with: server.name, address: server.address, type: server.type, isSaved: true)
+        } else {
+            let server = discoveredServers[indexPath.row]
+            cell.configure(with: server.name, address: server.address, type: server.type, isSaved: false)
+        }
+
         return cell
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        // TODO: Browse server files
+
+        let hasSaved = !savedServers.isEmpty
+
+        if hasSaved && indexPath.section == 0 {
+            let server = savedServers[indexPath.row]
+            connectWithCredentials(
+                host: server.address,
+                type: server.type,
+                username: server.username,
+                password: server.password,
+                port: server.port
+            )
+        } else {
+            let server = discoveredServers[indexPath.row]
+            connect(to: server)
+        }
     }
 
     func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
-        if editingStyle == .delete {
-            servers.remove(at: indexPath.row)
-            tableView.deleteRows(at: [indexPath], with: .automatic)
+        let hasSaved = !savedServers.isEmpty
+
+        if hasSaved && indexPath.section == 0 && editingStyle == .delete {
+            removeServer(at: indexPath.row)
         }
     }
 }
@@ -195,9 +372,31 @@ struct NetworkServer {
     let name: String
     let address: String
     let type: ServerType
+    let port: Int?
 }
 
-enum ServerType {
+struct SavedServer: Codable {
+    let name: String
+    let address: String
+    let type: ServerType
+    let username: String
+    let password: String
+    let port: Int?
+
+    static func load() -> [SavedServer] {
+        guard let data = UserDefaults.standard.data(forKey: "SavedServers"),
+              let servers = try? JSONDecoder().decode([SavedServer].self, from: data)
+        else { return [] }
+        return servers
+    }
+
+    static func save(_ servers: [SavedServer]) {
+        guard let data = try? JSONEncoder().encode(servers) else { return }
+        UserDefaults.standard.set(data, forKey: "SavedServers")
+    }
+}
+
+enum ServerType: String, Codable {
     case smb, sftp, webdav
 
     var icon: String {
@@ -206,5 +405,108 @@ enum ServerType {
         case .sftp: return "terminal.fill"
         case .webdav: return "cloud.fill"
         }
+    }
+}
+
+final class ServerCell: UITableViewCell {
+    private let iconView = UIImageView()
+    private let titleLabel = UILabel()
+    private let subtitleLabel = UILabel()
+    private let savedBadge = UIImageView()
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupUI() {
+        iconView.tintColor = .systemBlue
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(iconView)
+
+        titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(titleLabel)
+
+        subtitleLabel.font = .systemFont(ofSize: 13)
+        subtitleLabel.textColor = .secondaryLabel
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(subtitleLabel)
+
+        savedBadge.image = UIImage(systemName: "checkmark.circle.fill")
+        savedBadge.tintColor = .systemGreen
+        savedBadge.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(savedBadge)
+
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 28),
+            iconView.heightAnchor.constraint(equalToConstant: 28),
+
+            titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: savedBadge.leadingAnchor, constant: -8),
+
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: savedBadge.leadingAnchor, constant: -8),
+            subtitleLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8),
+
+            savedBadge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            savedBadge.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            savedBadge.widthAnchor.constraint(equalToConstant: 20),
+            savedBadge.heightAnchor.constraint(equalToConstant: 20)
+        ])
+    }
+
+    func configure(with name: String, address: String, type: ServerType, isSaved: Bool) {
+        iconView.image = UIImage(systemName: type.icon)
+        titleLabel.text = name
+        subtitleLabel.text = address
+        savedBadge.isHidden = !isSaved
+    }
+}
+
+final class ScanningCell: UITableViewCell {
+    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let label = UILabel()
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupUI() {
+        selectionStyle = .none
+
+        spinner.hidesWhenStopped = true
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(spinner)
+
+        label.text = "Scanning for servers..."
+        label.textColor = .secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: contentView.centerXAnchor, constant: -60),
+            spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+
+            label.leadingAnchor.constraint(equalTo: spinner.trailingAnchor, constant: 8),
+            label.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+        ])
+    }
+
+    func configure() {
+        spinner.startAnimating()
     }
 }
