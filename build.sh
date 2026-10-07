@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FFMPEG_KIT_DIR="ffmpeg-kit-next"
+FFMPEG_KIT_DIR="ffmpeg-kit-next-9.0.0"
 VERSION="9.0.0"
 TARBALL_URL="https://github.com/arthenica/ffmpeg-kit-next/archive/refs/tags/v${VERSION}.tar.gz"
 CACHE_DIR="$SCRIPT_DIR/.cache"
@@ -25,22 +25,22 @@ fi
 # Create cache directory
 mkdir -p "$CACHE_DIR"
 
-# Download and extract tarball
-if [ ! -d "$FFMPEG_KIT_DIR" ]; then
-    TARBALL_PATH="$CACHE_DIR/ffmpeg-kit-next-${VERSION}.tar.gz"
+# Download and extract tarball (reuse if exists)
+TARBALL_PATH="$CACHE_DIR/ffmpeg-kit-next-${VERSION}.tar.gz"
 
+if [ ! -d "$FFMPEG_KIT_DIR" ]; then
     if [ ! -f "$TARBALL_PATH" ]; then
         echo "Downloading ffmpeg-kit-next v${VERSION} tarball..."
         curl -L -o "$TARBALL_PATH" "$TARBALL_URL"
     else
-        echo "Using cached tarball: $TARBALL_PATH"
+        echo "✓ Using cached tarball"
     fi
 
     echo "Extracting..."
     tar -xzf "$TARBALL_PATH" -C "$CACHE_DIR"
     mv "$CACHE_DIR/ffmpeg-kit-next-${VERSION}" "$FFMPEG_KIT_DIR"
 else
-    echo "ffmpeg-kit-next directory exists, skipping download"
+    echo "✓ $FFMPEG_KIT_DIR directory exists, skipping download"
 fi
 
 cd "$FFMPEG_KIT_DIR"
@@ -58,7 +58,12 @@ else
     exit 1
 fi
 
-echo "Using GNU sed: $SED"
+echo "✓ Using GNU sed: $SED"
+
+# Check if FFmpeg sources are already downloaded
+if [ -d "src/ffmpeg" ] && [ "$(ls -A src/ffmpeg 2>/dev/null)" ]; then
+    echo "✓ FFmpeg sources already downloaded"
+fi
 
 # Build iOS xcframework with full package (LGPL)
 echo ""
