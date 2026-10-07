@@ -8,42 +8,40 @@ RELEASE_TAG="v6.0"
 
 cd "$SCRIPT_DIR"
 
-# Clone or checkout ffmpeg-kit-next
+# Clone or checkout ffmpeg-kit if not exists
 if [ ! -d "$FFMPEG_KIT_DIR" ]; then
-    echo "Cloning ffmpeg-kit-next with tag $RELEASE_TAG..."
+    echo "Cloning ffmpeg-kit with tag $RELEASE_TAG..."
     git clone --branch "$RELEASE_TAG" --depth 1 https://github.com/arthenica/ffmpeg-kit.git "$FFMPEG_KIT_DIR"
 else
-    echo "ffmpeg-kit-next directory exists, checking tag..."
+    echo "ffmpeg-kit directory exists, skipping clone"
     cd "$FFMPEG_KIT_DIR"
 
-    # Fetch tags if needed
-    git fetch --tags --depth 1 origin "$RELEASE_TAG" 2>/dev/null || true
-
-    # Checkout to the release tag
-    if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
-        git checkout "$RELEASE_TAG"
-    else
-        echo "Tag $RELEASE_TAG not found, re-cloning..."
-        cd "$SCRIPT_DIR"
-        rm -rf "$FFMPEG_KIT_DIR"
-        git clone --branch "$RELEASE_TAG" --depth 1 https://github.com/arthenica/ffmpeg-kit.git "$FFMPEG_KIT_DIR"
+    # Check if we're on the correct tag
+    CURRENT_TAG=$(git describe --tags 2>/dev/null || echo "unknown")
+    if [ "$CURRENT_TAG" != "$RELEASE_TAG" ]; then
+        echo "Current tag is $CURRENT_TAG, checking out $RELEASE_TAG..."
+        git fetch --tags --depth 1 origin "$RELEASE_TAG" 2>/dev/null || true
+        git checkout "$RELEASE_TAG" 2>/dev/null || {
+            echo "Tag $RELEASE_TAG not found locally, fetching..."
+            git fetch --depth 1 origin tag "$RELEASE_TAG"
+            git checkout "$RELEASE_TAG"
+        }
     fi
     cd "$SCRIPT_DIR"
 fi
 
 cd "$FFMPEG_KIT_DIR"
 
-# Build iOS framework with SPM support
+# Build iOS xcframework with hardware acceleration
 echo "Building FFmpeg for iOS..."
-echo "Options: xcframework, SPM, VideoToolbox, AudioToolbox, AVFoundation"
+echo "Options: xcframework, VideoToolbox, AudioToolbox, AVFoundation"
 echo "NOT enabling GPL libraries"
 
 ./ios.sh \
     -x \
-    --spm \
-    --enable-lib-ios-videotoolbox \
-    --enable-lib-ios-audiotoolbox \
-    --enable-lib-ios-avfoundation
+    --enable-ios-videotoolbox \
+    --enable-ios-audiotoolbox \
+    --enable-ios-avfoundation
 
 # Print output location
 PRODUCT_PATH="$SCRIPT_DIR/$FFMPEG_KIT_DIR/prebuilt/bundle-apple-xcframework-ios"
@@ -51,6 +49,9 @@ if [ -d "$PRODUCT_PATH" ]; then
     echo ""
     echo "✅ Build completed successfully!"
     echo "Product path: $PRODUCT_PATH"
+    echo ""
+    echo "Generated xcframeworks:"
+    ls -1 "$PRODUCT_PATH"
 else
     echo ""
     echo "❌ Build failed. Check the output above for errors."
