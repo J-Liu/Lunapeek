@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FFMPEG_KIT_DIR="ffmpeg-kit-next"
 VERSION="9.0.0"
 TARBALL_URL="https://github.com/arthenica/ffmpeg-kit-next/archive/refs/tags/v${VERSION}.tar.gz"
+CACHE_DIR="$SCRIPT_DIR/.cache"
 
 cd "$SCRIPT_DIR"
 
@@ -21,14 +22,23 @@ if ! brew list zlib &> /dev/null 2>&1; then
     brew install zlib
 fi
 
+# Create cache directory
+mkdir -p "$CACHE_DIR"
+
 # Download and extract tarball
 if [ ! -d "$FFMPEG_KIT_DIR" ]; then
-    echo "Downloading ffmpeg-kit-next v${VERSION} tarball..."
-    curl -L -o "/tmp/ffmpeg-kit-next-${VERSION}.tar.gz" "$TARBALL_URL"
+    TARBALL_PATH="$CACHE_DIR/ffmpeg-kit-next-${VERSION}.tar.gz"
+
+    if [ ! -f "$TARBALL_PATH" ]; then
+        echo "Downloading ffmpeg-kit-next v${VERSION} tarball..."
+        curl -L -o "$TARBALL_PATH" "$TARBALL_URL"
+    else
+        echo "Using cached tarball: $TARBALL_PATH"
+    fi
+
     echo "Extracting..."
-    tar -xzf "/tmp/ffmpeg-kit-next-${VERSION}.tar.gz" -C "/tmp"
-    mv "/tmp/ffmpeg-kit-next-${VERSION}" "$FFMPEG_KIT_DIR"
-    rm "/tmp/ffmpeg-kit-next-${VERSION}.tar.gz"
+    tar -xzf "$TARBALL_PATH" -C "$CACHE_DIR"
+    mv "$CACHE_DIR/ffmpeg-kit-next-${VERSION}" "$FFMPEG_KIT_DIR"
 else
     echo "ffmpeg-kit-next directory exists, skipping download"
 fi
