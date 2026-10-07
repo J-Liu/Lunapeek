@@ -41,7 +41,8 @@ public final class VideoRenderer {
         CMVideoFormatDescriptionCreate(
             allocator: kCFAllocatorDefault,
             codecType: kCMVideoCodecType_H264,
-            dimensions: CGSize(width: CGFloat(videoProps.width), height: CGFloat(videoProps.height)),
+            width: videoProps.width,
+            height: videoProps.height,
             extensions: attributes as CFDictionary,
             formatDescriptionOut: &formatDesc
         )
@@ -52,7 +53,9 @@ public final class VideoRenderer {
     public func enqueue(_ frame: VideoFrame) {
         var sampleBuffer: CMSampleBuffer?
 
-        let formatDesc = createFormatDescription(for: frame.pixelBuffer)
+        guard let formatDesc = createFormatDescription(for: frame.pixelBuffer) else {
+            return
+        }
         let pts = CMTime(
             seconds: Double(frame.presentationTimestamp) / 1_000_000,
             preferredTimescale: 1_000_000

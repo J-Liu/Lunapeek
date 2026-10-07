@@ -4,6 +4,7 @@
 // under Section 7. See LICENSE for details.
 
 import UIKit
+import UniformTypeIdentifiers
 
 class ViewController: UIViewController {
     private var playerEngine: PlayerEngine?

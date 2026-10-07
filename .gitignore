@@ -1,3 +1,40 @@
+# Build cache
 .cache
-ffmpeg-kit-next-9.0.0/
+ffmpeg-kit-next-*/
+
+# Binary frameworks (rebuild from source)
 *.xcframework/
+
+# Xcode
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcuserstate
+*.xcuserdatad
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

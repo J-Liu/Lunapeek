@@ -14,18 +14,18 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
     private var outputFormat: AudioStreamBasicDescription?
     private var isConfigured = false
     private var pendingPackets: [MediaPacket] = []
-    private var currentPacket: MediaPacket?
+    var currentPacket: MediaPacket?
 
     public init() {}
 
     public func configure(with formatDescription: MediaFormatDescription) async throws {
-        reset()
+        await reset()
 
         guard let audioProps = formatDescription.audioProperties else {
             throw AudioDecoderError.unsupportedFormat
         }
 
-        inputFormat = AudioStreamBasicDescription(
+        var input = AudioStreamBasicDescription(
             mSampleRate: Float64(audioProps.sampleRate),
             mFormatID: kAudioFormatMPEG4AAC,
             mFormatFlags: 0,
@@ -37,7 +37,7 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
             mReserved: 0
         )
 
-        outputFormat = AudioStreamBasicDescription(
+        var output = AudioStreamBasicDescription(
             mSampleRate: Float64(audioProps.sampleRate),
             mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
@@ -49,11 +49,11 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
             mReserved: 0
         )
 
-        guard let inputFormat = inputFormat, let outputFormat = outputFormat else {
-            throw AudioDecoderError.configurationFailed(nil)
-        }
+        inputFormat = input
+        outputFormat = output
 
-        let status = AudioConverterNew(&inputFormat, &outputFormat, &converter)
+        var converter: AudioConverterRef?
+        let status = AudioConverterNew(&input, &output, &converter)
         guard status == noErr, let converter = converter else {
             throw AudioDecoderError.configurationFailed(nil)
         }
@@ -72,8 +72,9 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
         var outputBufferSize: UInt32 = 8192
         var outputBuffer = Data(count: Int(outputBufferSize))
         var frames: UInt32 = 4096
+        var decodeStatus: OSStatus = noErr
 
-        let status = outputBuffer.withUnsafeMutableBytes { outputBytes in
+        outputBuffer.withUnsafeMutableBytes { outputBytes in
             var outputAudioBufferList = AudioBufferList(
                 mNumberBuffers: 1,
                 mBuffers: AudioBuffer(
@@ -83,7 +84,7 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
                 )
             )
 
-            AudioConverterFillComplexBuffer(
+            decodeStatus = AudioConverterFillComplexBuffer(
                 converter,
                 inputCallback,
                 Unmanaged.passUnretained(self).toOpaque(),
@@ -93,7 +94,7 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
             )
         }
 
-        guard status == noErr else {
+        guard decodeStatus == noErr else {
             throw AudioDecoderError.decodingFailed(nil)
         }
 
@@ -152,20 +153,23 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
     }
 }
 
-private func inputCallback(
-    _ converter: AudioConverterRef,
-    _ ioNumberDataPackets: UnsafeMutablePointer<UInt32>,
-    _ ioData: UnsafeMutablePointer<AudioBufferList>,
-    _ outDataPacketDescriptions: UnsafeMutablePointer<UnsafeMutablePointer<AudioStreamPacketDescription>?>?,
-    _ inUserData: UnsafeMutableRawPointer
-) -> OSStatus {
+private let inputCallback: @convention(c) (
+    AudioConverterRef,
+    UnsafeMutablePointer<UInt32>,
+    UnsafeMutablePointer<AudioBufferList>,
+    UnsafeMutablePointer<UnsafeMutablePointer<AudioStreamPacketDescription>?>?,
+    UnsafeMutableRawPointer?
+) -> OSStatus = { converter, ioNumberDataPackets, ioData, outDataPacketDescriptions, inUserData in
+    guard let inUserData = inUserData else {
+        ioNumberDataPackets.pointee = 0
+        return noErr
+    }
     let decoder = Unmanaged<AudioToolboxDecoderPlugin>.fromOpaque(inUserData).takeUnretainedValue()
 
     ioNumberDataPackets.pointee = 1
     ioData.pointee.mNumberBuffers = 1
 
-    let packet = decoder.currentPacket
-    guard let packet = packet else {
+    guard let packet = decoder.currentPacket else {
         ioNumberDataPackets.pointee = 0
         return noErr
     }

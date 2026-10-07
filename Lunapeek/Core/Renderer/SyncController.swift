@@ -4,6 +4,8 @@
 // under Section 7. See LICENSE for details.
 
 import Foundation
+import CoreMedia
+import QuartzCore
 
 /// Clock for media synchronization.
 public final class MediaClock {

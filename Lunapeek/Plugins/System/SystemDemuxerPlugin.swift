@@ -17,7 +17,7 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
     public init() {}
 
     public func open(url: URL) async throws -> ContainerInfo {
-        close()
+        await close()
         currentURL = url
 
         let asset = AVAsset(url: url)
@@ -25,7 +25,9 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
 
         try await asset.loadValues(forKeys: ["tracks", "duration"])
 
-        guard try await asset.statusOfValue(forKey: "tracks") == .loaded else {
+        var error: NSError?
+        let status = asset.statusOfValue(forKey: "tracks", error: &error)
+        guard status == .loaded else {
             throw DemuxerError.failedToLoadTracks
         }
 
@@ -81,11 +83,16 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
     }
 
     private func buildStreamInfo(for track: AVAssetTrack, index: Int, codecType: CodecType) async throws -> StreamInfo {
-        let duration = try await track.load(.duration)
-        let timeRange = try await track.load(.timeRange)
+        // Load track properties using string keys to avoid static member lookup conflict
+        try await track.loadValues(forKeys: ["timeRange", "formatDescriptions"])
+
+        // Use timeRange.duration since duration property is unavailable in Swift
+        let timeRange = track.timeRange
+        let duration = timeRange.duration
 
         var formatDescription: MediaFormatDescription?
-        let formatDescriptions = try await track.load(.formatDescriptions)
+        // formatDescriptions returns [Any], need to cast
+        let formatDescriptions = track.formatDescriptions as? [CMFormatDescription] ?? []
 
         if let desc = formatDescriptions.first {
             formatDescription = buildFormatDescription(from: desc, codecType: codecType)
@@ -104,7 +111,7 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
     }
 
     private func buildFormatDescription(from desc: CMFormatDescription, codecType: CodecType) -> MediaFormatDescription {
-        let codecTypeStr = CMFormatDescriptionGetMediaSubTypeString(desc)
+        let codecTypeStr = String(fourCharCode: CMFormatDescriptionGetMediaSubType(desc))
         let codecId = CMFormatDescriptionGetMediaSubType(desc)
         let extensions = CMFormatDescriptionGetExtensions(desc) as? [String: Any]
 
@@ -122,14 +129,14 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
             if let asbd = basicDesc?.pointee {
                 audioProps = AudioFormatProperties(
                     sampleRate: Int32(asbd.mSampleRate),
-                    channels: asbd.mChannelsPerFrame,
-                    bitsPerSample: asbd.mBitsPerChannel
+                    channels: Int32(asbd.mChannelsPerFrame),
+                    bitsPerSample: Int32(asbd.mBitsPerChannel)
                 )
             }
         }
 
         return MediaFormatDescription(
-            codecName: codecTypeStr ?? "unknown",
+            codecName: codecTypeStr,
             codecId: codecId,
             videoProperties: videoProps,
             audioProperties: audioProps
@@ -137,11 +144,11 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
     }
 
     public func readPacket() async throws -> MediaPacket? {
-        guard let reader = assetReader, reader.status == .reading else {
-            if reader?.status == .completed {
+        guard let assetReader, assetReader.status == .reading else {
+            if assetReader?.status == .completed {
                 return nil
             }
-            throw DemuxerError.readerError(reader?.error)
+            throw DemuxerError.readerError(assetReader?.error)
         }
 
         for (streamIndex, output) in outputMap {
@@ -159,16 +166,29 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
         var data = Data()
         let length = CMBlockBufferGetDataLength(dataBuffer)
         data.reserveCapacity(length)
-        CMBlockBufferCopyDataBytes(dataBuffer, atOffset: 0, dataLength: length, destination: data.bytes)
+        data.withUnsafeMutableBytes { ptr in
+            if let baseAddress = ptr.baseAddress {
+                CMBlockBufferCopyDataBytes(dataBuffer, atOffset: 0, dataLength: length, destination: baseAddress)
+            }
+        }
 
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let dts = CMSampleBufferGetDecodeTimeStamp(sampleBuffer)
         let duration = CMSampleBufferGetDuration(sampleBuffer)
 
-        let isKeyFrame = sampleBuffer.numSamples > 0 &&
-            !sampleBuffer.sampleAttachmentsEntries.isEmpty &&
-            (sampleBuffer.sampleAttachmentsEntries.first?.first?.sampleAttachment.keys.contains(.notSync) == false ||
-             sampleBuffer.sampleAttachmentsEntries.first?.first?.sampleAttachment[.notSync] as? Bool != true)
+        let isKeyFrame: Bool
+        if sampleBuffer.numSamples > 0 {
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+            if let attachments, CFArrayGetCount(attachments) > 0 {
+                let attachment = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFDictionary.self)
+                let notSync = CFDictionaryGetValue(attachment, Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque())
+                isKeyFrame = notSync == nil
+            } else {
+                isKeyFrame = true
+            }
+        } else {
+            isKeyFrame = false
+        }
 
         return MediaPacket(
             data: data,
@@ -185,7 +205,7 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
             throw DemuxerError.noAsset
         }
 
-        close()
+        await close()
         let newReader = try AVAssetReader(asset: asset)
 
         let time = CMTime(
@@ -229,8 +249,9 @@ private extension Double {
     }
 }
 
-private extension Data {
-    var bytes: [UInt8] {
-        withUnsafeBytes { Array($0) }
+private extension String {
+    init(fourCharCode: FourCharCode) {
+        var code = fourCharCode.bigEndian
+        self = withUnsafeBytes(of: &code) { Data($0).map { Character(UnicodeScalar($0)) } }.map { String($0) }.joined()
     }
 }

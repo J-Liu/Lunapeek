@@ -7,7 +7,7 @@ import AVFoundation
 import Foundation
 
 /// Player state.
-public enum PlayerState {
+public enum PlayerState: Equatable {
     case idle
     case loading
     case ready
@@ -15,6 +15,22 @@ public enum PlayerState {
     case paused
     case ended
     case error(Error)
+
+    public static func == (lhs: PlayerState, rhs: PlayerState) -> Bool {
+        switch (lhs, rhs) {
+        case (.idle, .idle),
+             (.loading, .loading),
+             (.ready, .ready),
+             (.playing, .playing),
+             (.paused, .paused),
+             (.ended, .ended):
+            return true
+        case (.error, .error):
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// Player engine that coordinates demuxer, decoders, and renderers.
@@ -120,7 +136,15 @@ public final class PlayerEngine {
     private func decodeLoop() {
         while isDecoding && !shouldStop {
             do {
-                guard let packet = try demuxer?.readPacket() else {
+                var packet: MediaPacket?
+                let semaphore = DispatchSemaphore(value: 0)
+                Task { [weak self] in
+                    packet = try? await self?.demuxer?.readPacket()
+                    semaphore.signal()
+                }
+                semaphore.wait()
+
+                guard let packet = packet else {
                     DispatchQueue.main.async { [weak self] in
                         self?.state = .ended
                     }
@@ -186,8 +210,8 @@ public final class PlayerEngine {
 
         isDecoding = false
         try await demuxer.seek(to: timestamp)
-        await videoDecoder?.flush()
-        await audioDecoder?.flush()
+        try? await videoDecoder?.flush()
+        try? await audioDecoder?.flush()
         videoRenderer?.flush()
         audioRenderer?.flush()
 

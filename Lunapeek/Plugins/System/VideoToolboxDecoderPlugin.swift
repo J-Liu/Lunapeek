@@ -17,7 +17,7 @@ public final class VideoToolboxDecoderPlugin: VideoDecoderPlugin {
     public init() {}
 
     public func configure(with formatDescription: MediaFormatDescription) async throws {
-        reset()
+        await reset()
 
         guard formatDescription.videoProperties != nil else {
             throw VideoDecoderError.unsupportedFormat
@@ -29,7 +29,8 @@ public final class VideoToolboxDecoderPlugin: VideoDecoderPlugin {
         let status = CMVideoFormatDescriptionCreate(
             allocator: kCFAllocatorDefault,
             codecType: formatDescription.codecId,
-            dimensions: CGSize(width: CGFloat(videoProps.width), height: CGFloat(videoProps.height)),
+            width: videoProps.width,
+            height: videoProps.height,
             extensions: nil,
             formatDescriptionOut: &formatDesc
         )
@@ -41,13 +42,13 @@ public final class VideoToolboxDecoderPlugin: VideoDecoderPlugin {
         self.formatDescription = formatDesc
 
         let decoderConfig: [String: Any] = [
-            kVTDecompressionDecoderOption_RequiredDecoderGPURegistryID as String: false,
             kVTDecompressionPropertyKey_RealTime as String: true
         ]
 
         var callback = VTDecompressionOutputCallbackRecord(
-            decompressionOutputCallback: { unownedClient, status, flags, imageBuffer, pts, duration in
-                let decoder = Unmanaged<VideoToolboxDecoderPlugin>.fromOpaque(unownedClient).takeUnretainedValue()
+            decompressionOutputCallback: { outputCallbackRefCon, sourceFrameRefCon, status, flags, imageBuffer, pts, duration in
+                guard let outputCallbackRefCon = outputCallbackRefCon else { return }
+                let decoder = Unmanaged<VideoToolboxDecoderPlugin>.fromOpaque(outputCallbackRefCon).takeUnretainedValue()
                 decoder.handleDecodedFrame(
                     status: status,
                     imageBuffer: imageBuffer,
@@ -117,7 +118,7 @@ public final class VideoToolboxDecoderPlugin: VideoDecoderPlugin {
                 allocator: kCFAllocatorDefault,
                 memoryBlock: nil,
                 blockLength: packet.data.count,
-                providedBlockAllocator: kCFAllocatorDefault,
+                blockAllocator: kCFAllocatorDefault,
                 customBlockSource: nil,
                 offsetToData: 0,
                 dataLength: packet.data.count,
@@ -160,10 +161,11 @@ public final class VideoToolboxDecoderPlugin: VideoDecoderPlugin {
         ]
 
         var infoFlags: VTDecodeInfoFlags = []
-        let decodeStatus = VTDecompressionSessionDecodeSampleBuffer(
+        let decodeStatus = VTDecompressionSessionDecodeFrame(
             session,
             sampleBuffer: sampleBuffer,
             flags: decodeFlags,
+            frameRefcon: nil,
             infoFlagsOut: &infoFlags
         )
 
