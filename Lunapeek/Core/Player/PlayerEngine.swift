@@ -156,9 +156,6 @@ public final class PlayerEngine {
                 }
 
                 Thread.sleep(forTimeInterval: 0.001)
-            } catch {
-                print("Decode error: \(error)")
-                break
             }
         }
     }
@@ -210,8 +207,8 @@ public final class PlayerEngine {
 
         isDecoding = false
         try await demuxer.seek(to: timestamp)
-        try? await videoDecoder?.flush()
-        try? await audioDecoder?.flush()
+        _ = try? await videoDecoder?.flush()
+        _ = try? await audioDecoder?.flush()
         videoRenderer?.flush()
         audioRenderer?.flush()
 
