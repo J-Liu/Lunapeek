@@ -40,15 +40,16 @@ final class RemoteFileBrowserViewController: UIViewController {
     private func updateCollectionViewLayout() {
         guard let layout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout else { return }
 
-        let isPad = UIDevice.current.userInterfaceIdiom == .pad
-        let availableWidth = collectionView.bounds.width - 16 // minus insets
-
-        let columns: CGFloat = isPad ? 5 : 3
+        let availableWidth = collectionView.bounds.width - 16
+        let minItemWidth: CGFloat = 90
+        let maxItemWidth: CGFloat = 120
+        let itemWidth = max(minItemWidth, min(maxItemWidth, availableWidth / 3))
+        let columns = floor(availableWidth / itemWidth)
         let spacing = layout.minimumInteritemSpacing * (columns - 1)
-        let itemWidth = floor((availableWidth - spacing) / columns)
-        let itemHeight = itemWidth * 1.4
+        let finalWidth = floor((availableWidth - spacing) / columns)
+        let itemHeight = finalWidth + 40 // icon + name + button
 
-        layout.itemSize = CGSize(width: itemWidth, height: itemHeight)
+        layout.itemSize = CGSize(width: finalWidth, height: itemHeight)
     }
 
     init(server: SavedServer) {
@@ -419,91 +420,42 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
             sheet.prefersGrabberVisible = true
         }
 
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        menuVC.view.addSubview(scrollView)
+
         let stackView = UIStackView()
         stackView.axis = .vertical
-        stackView.spacing = 0
+        stackView.spacing = 12
         stackView.translatesAutoresizingMaskIntoConstraints = false
-        menuVC.view.addSubview(stackView)
+        scrollView.addSubview(stackView)
 
         // Header view
         let headerView = createMenuHeader(for: item)
         stackView.addArrangedSubview(headerView)
 
-        // Divider
-        let divider = UIView()
-        divider.backgroundColor = .separator
-        divider.translatesAutoresizingMaskIntoConstraints = false
-        stackView.addArrangedSubview(divider)
-        NSLayoutConstraint.activate([
-            divider.heightAnchor.constraint(equalToConstant: 0.5)
-        ])
-
-        // Actions
-        let actionsStack = UIStackView()
-        actionsStack.axis = .vertical
-        actionsStack.spacing = 0
-        actionsStack.translatesAutoresizingMaskIntoConstraints = false
-        stackView.addArrangedSubview(actionsStack)
-
-        // Share action
-        let shareAction = createMenuAction(title: "Share", icon: "square.and.arrow.up") { [weak self] in
+        // Group 1: Share (special button with icon above)
+        let shareButton = createShareButton { [weak self] in
             self?.shareItem(item)
         }
-        actionsStack.addArrangedSubview(shareAction)
+        stackView.addArrangedSubview(shareButton)
 
-        // Divider
-        let divider1 = createMenuDivider()
-        actionsStack.addArrangedSubview(divider1)
+        // Group 2: File operations
+        let group2 = createMenuGroup(actions: [
+            ("arrow.down.circle", "Download", { [weak self] in self?.downloadItem(item) }, false),
+            ("pencil", "Rename", { [weak self] in self?.renameItem(item) }, false),
+            ("folder", "Move to", { [weak self] in self?.moveItem(item) }, false),
+            ("doc.on.doc", "Copy to", { [weak self] in self?.copyItem(item) }, false),
+            ("plus.square.on.square", "Duplicate", { [weak self] in self?.duplicateItem(item) }, false),
+            ("trash", "Delete", { [weak self] in self?.confirmDeleteItem(item, at: indexPath) }, true)
+        ])
+        stackView.addArrangedSubview(group2)
 
-        // Download
-        let downloadAction = createMenuAction(title: "Download", icon: "arrow.down.circle") { [weak self] in
-            self?.downloadItem(item)
-        }
-        actionsStack.addArrangedSubview(downloadAction)
-
-        // Rename
-        let renameAction = createMenuAction(title: "Rename", icon: "pencil") { [weak self] in
-            self?.renameItem(item)
-        }
-        actionsStack.addArrangedSubview(renameAction)
-
-        // Move to
-        let moveAction = createMenuAction(title: "Move to", icon: "folder.badge.arrow.right") { [weak self] in
-            self?.moveItem(item)
-        }
-        actionsStack.addArrangedSubview(moveAction)
-
-        // Copy to
-        let copyAction = createMenuAction(title: "Copy to", icon: "doc.on.doc") { [weak self] in
-            self?.copyItem(item)
-        }
-        actionsStack.addArrangedSubview(copyAction)
-
-        // Duplicate
-        let duplicateAction = createMenuAction(title: "Duplicate", icon: "plus.square.on.square") { [weak self] in
-            self?.duplicateItem(item)
-        }
-        actionsStack.addArrangedSubview(duplicateAction)
-
-        // Divider
-        let divider2 = createMenuDivider()
-        actionsStack.addArrangedSubview(divider2)
-
-        // Delete (destructive)
-        let deleteAction = createMenuAction(title: "Delete", icon: "trash", isDestructive: true) { [weak self] in
-            self?.confirmDeleteItem(item, at: indexPath)
-        }
-        actionsStack.addArrangedSubview(deleteAction)
-
-        // Divider
-        let divider3 = createMenuDivider()
-        actionsStack.addArrangedSubview(divider3)
-
-        // Show Info
-        let infoAction = createMenuAction(title: "Show Info", icon: "info.circle") { [weak self] in
-            self?.showInfo(for: item)
-        }
-        actionsStack.addArrangedSubview(infoAction)
+        // Group 3: Info
+        let group3 = createMenuGroup(actions: [
+            ("info.circle", "Show Info", { [weak self] in self?.showInfo(for: item) }, false)
+        ])
+        stackView.addArrangedSubview(group3)
 
         // Cancel button
         let cancelButton = UIButton(type: .system)
@@ -513,17 +465,22 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         cancelButton.layer.cornerRadius = 12
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
         cancelButton.addTarget(self, action: #selector(dismissMenu), for: .touchUpInside)
-
         stackView.addArrangedSubview(cancelButton)
         NSLayoutConstraint.activate([
             cancelButton.heightAnchor.constraint(equalToConstant: 56)
         ])
 
         NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: menuVC.view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            stackView.leadingAnchor.constraint(equalTo: menuVC.view.leadingAnchor, constant: 16),
-            stackView.trailingAnchor.constraint(equalTo: menuVC.view.trailingAnchor, constant: -16),
-            stackView.bottomAnchor.constraint(lessThanOrEqualTo: menuVC.view.safeAreaLayoutGuide.bottomAnchor, constant: -12)
+            scrollView.topAnchor.constraint(equalTo: menuVC.view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: menuVC.view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: menuVC.view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: menuVC.view.bottomAnchor),
+
+            stackView.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 12),
+            stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -16),
+            stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -12),
+            stackView.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -32)
         ])
 
         present(menuVC, animated: true)
@@ -540,7 +497,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         view.layer.cornerRadius = 12
 
         let iconView = UIImageView()
-        let config = UIImage.SymbolConfiguration(pointSize: 32, weight: .regular)
+        let config = UIImage.SymbolConfiguration(pointSize: 48, weight: .regular)
         iconView.preferredSymbolConfiguration = config
         iconView.contentMode = .center
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -568,48 +525,114 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         view.addSubview(iconView)
 
         let nameLabel = UILabel()
-        nameLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        nameLabel.font = .systemFont(ofSize: 18, weight: .semibold)
         nameLabel.text = item.name
         nameLabel.numberOfLines = 2
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(nameLabel)
 
         let detailLabel = UILabel()
-        detailLabel.font = .systemFont(ofSize: 13)
+        detailLabel.font = .systemFont(ofSize: 14)
         detailLabel.textColor = .secondaryLabel
+        detailLabel.numberOfLines = 0
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        var detailText = ""
+        var details: [String] = []
         if !item.isDirectory, let size = item.size {
-            detailText = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+            details.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
         }
         if let modified = item.modified {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
             formatter.timeStyle = .short
-            if !detailText.isEmpty { detailText += " • " }
-            detailText += formatter.string(from: modified)
+            details.append(formatter.string(from: modified))
         }
-        detailLabel.text = detailText.isEmpty ? nil : detailText
+        detailLabel.text = details.isEmpty ? nil : details.joined(separator: " • ")
         view.addSubview(detailLabel)
 
         NSLayoutConstraint.activate([
+            iconView.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
             iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 44),
-            iconView.heightAnchor.constraint(equalToConstant: 44),
+            iconView.widthAnchor.constraint(equalToConstant: 60),
+            iconView.heightAnchor.constraint(equalToConstant: 60),
 
-            nameLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            nameLabel.topAnchor.constraint(equalTo: iconView.topAnchor),
             nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
             nameLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
 
-            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             detailLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            detailLabel.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12)
+            detailLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -12)
         ])
 
         return view
+    }
+
+    private func createShareButton(action: @escaping () -> Void) -> UIButton {
+        let button = UIButton(type: .system)
+        var config = UIButton.Configuration.plain()
+        config.title = "Share"
+        config.image = UIImage(systemName: "square.and.arrow.up")
+        config.imagePadding = 8
+        config.imagePlacement = .top
+        config.titleTextAttributesTransformer = .init { attributes in
+            var newAttributes = attributes
+            newAttributes.font = .systemFont(ofSize: 15, weight: .medium)
+            return newAttributes
+        }
+        button.configuration = config
+        button.tintColor = .label
+        button.backgroundColor = .secondarySystemBackground
+        button.layer.cornerRadius = 12
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        let actionWrapper = { [weak self] in
+            self?.dismissMenu()
+            action()
+        }
+        button.addAction(UIAction { _ in actionWrapper() }, for: .touchUpInside)
+
+        NSLayoutConstraint.activate([
+            button.heightAnchor.constraint(equalToConstant: 72)
+        ])
+
+        return button
+    }
+
+    private func createMenuGroup(actions: [(String, String, () -> Void)]) -> UIView {
+        return createMenuGroup(actions: actions.map { ($0, $1, $2, false) })
+    }
+
+    private func createMenuGroup(actions: [(String, String, () -> Void, Bool)]) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .secondarySystemBackground
+        container.layer.cornerRadius = 12
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
+
+        for (index, action) in actions.enumerated() {
+            let button = createMenuAction(title: action.1, icon: action.0, isDestructive: action.3, action: action.2)
+            stack.addArrangedSubview(button)
+
+            if index < actions.count - 1 {
+                let divider = createMenuDivider()
+                stack.addArrangedSubview(divider)
+            }
+        }
+
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+
+        return container
     }
 
     private func createMenuAction(title: String, icon: String, isDestructive: Bool = false, action: @escaping () -> Void) -> UIButton {
@@ -627,7 +650,6 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         button.configuration = config
         button.contentHorizontalAlignment = .leading
         button.tintColor = isDestructive ? .systemRed : .label
-        button.backgroundColor = .secondarySystemBackground
         button.translatesAutoresizingMaskIntoConstraints = false
 
         let actionWrapper = { [weak self] in
@@ -647,6 +669,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         let view = UIView()
         view.backgroundColor = .separator
         view.translatesAutoresizingMaskIntoConstraints = false
+        view.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 60, bottom: 0, trailing: 0)
         NSLayoutConstraint.activate([
             view.heightAnchor.constraint(equalToConstant: 0.5)
         ])
