@@ -512,44 +512,54 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     }
 
     private func resolveAddress(for service: NetService) -> String {
-        guard let addresses = service.addresses, !addresses.isEmpty else {
-            return service.name
+        // Prefer IPv4 address
+        if let ipv4 = service.addressIPv4 {
+            return ipv4
         }
-
-        var ipv4Address: String?
-        var ipv6Address: String?
-
-        for data in addresses {
-            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            let result = data.withUnsafeBytes { ptr -> Int32 in
-                guard let addr = ptr.baseAddress else { return -1 }
-                return getnameinfo(
-                    addr.assumingMemoryBound(to: sockaddr.self),
-                    socklen_t(data.count),
-                    &hostname,
-                    socklen_t(hostname.count),
-                    nil,
-                    0,
-                    NI_NUMERICHOST
-                )
-            }
-
-            if result == 0 {
-                let ip = String(cString: hostname)
-                if ip.contains(":") {
-                    // IPv6
-                    if ipv6Address == nil {
-                        ipv6Address = ip
-                    }
-                } else {
-                    // IPv4 - prefer this
-                    ipv4Address = ip
-                    break
-                }
-            }
+        // Fall back to IPv6
+        if let ipv6 = service.addressIPv6 {
+            return ipv6
         }
+        return service.name
+    }
+}
 
-        return ipv4Address ?? ipv6Address ?? service.name
+extension NetService {
+    var addressIPv4: String? {
+        return addresses?.compactMap { data -> String? in
+            data.withUnsafeBytes { ptr -> String? in
+                guard let sockaddrIn = ptr.bindMemory(to: sockaddr_in.self).baseAddress,
+                      sockaddrIn.pointee.sin_family == UInt8(AF_INET),
+                      let bytes = inet_ntoa(sockaddrIn.pointee.sin_addr),
+                      let address = String(cString: bytes, encoding: .ascii)
+                else { return nil }
+                return address
+            }
+        }.first
+    }
+
+    var addressIPv6: String? {
+        return addresses?.compactMap { data -> String? in
+            data.withUnsafeBytes { ptr -> String? in
+                guard let sockaddrIn6 = ptr.bindMemory(to: sockaddr_in6.self).baseAddress,
+                      sockaddrIn6.pointee.sin6_family == UInt8(AF_INET6)
+                else { return nil }
+
+                var sin6Addr = sockaddrIn6.pointee.sin6_addr
+                let buffer = UnsafeMutablePointer<Int8>.allocate(capacity: Int(INET6_ADDRSTRLEN))
+                defer { buffer.deallocate() }
+
+                guard let bytes = inet_ntop(
+                    Int32(sockaddrIn6.pointee.sin6_family),
+                    &sin6Addr,
+                    buffer,
+                    socklen_t(INET6_ADDRSTRLEN)
+                ),
+                let address = String(cString: bytes, encoding: .ascii)
+                else { return nil }
+                return address
+            }
+        }.first
     }
 }
 

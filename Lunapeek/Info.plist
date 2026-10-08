@@ -29,6 +29,7 @@
 	<string>This app needs to discover network file servers on your local network.</string>
 	<key>NSBonjourServices</key>
 	<array>
+		<string>_dns-sd._udp</string>
 		<string>_smb._tcp.</string>
 		<string>_sftp-ssh._tcp.</string>
 		<string>_ssh._tcp.</string>
