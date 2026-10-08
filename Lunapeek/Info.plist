@@ -29,10 +29,10 @@
 	<string>This app needs to discover network file servers on your local network.</string>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_smb._tcp</string>
-		<string>_sftp-ssh._tcp</string>
-		<string>_ssh._tcp</string>
-		<string>_afpovertcp._tcp</string>
+		<string>_smb._tcp.</string>
+		<string>_sftp-ssh._tcp.</string>
+		<string>_ssh._tcp.</string>
+		<string>_afpovertcp._tcp.</string>
 	</array>
 </dict>
 </plist>
