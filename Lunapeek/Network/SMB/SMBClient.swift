@@ -54,6 +54,17 @@ public struct SMBFile {
     }
 }
 
+/// SMB share info.
+public struct SMBShare {
+    public let name: String
+    public let comment: String
+
+    public init(name: String, comment: String) {
+        self.name = name
+        self.comment = comment
+    }
+}
+
 /// SMB download progress.
 public struct SMBProgress {
     public let bytesTransferred: Int64
@@ -72,6 +83,9 @@ public struct SMBProgress {
 
 /// SMB client protocol.
 public protocol SMBClientProtocol {
+    func login(host: String, port: Int, username: String, password: String, domain: String?) async throws
+    func listShares() async throws -> [SMBShare]
+    func connectShare(_ share: String) async throws
     func connect(configuration: SMBConfiguration) async throws
     func disconnect() async
     func listDirectory(path: String) async throws -> [SMBFile]

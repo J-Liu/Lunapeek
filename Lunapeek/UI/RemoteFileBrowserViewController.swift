@@ -409,6 +409,9 @@ final class FileItemCell: UICollectionViewCell {
     func configure(with item: RemoteFileItem, isSelected: Bool) {
         titleLabel.text = item.name
 
+        let largeConfig = UIImage.SymbolConfiguration(pointSize: 48, weight: .regular)
+        iconView.preferredSymbolConfiguration = largeConfig
+
         if item.isDirectory {
             iconView.image = UIImage(systemName: "folder.fill")
             iconView.tintColor = .systemBlue

@@ -157,14 +157,6 @@ final class NetworkViewController: UIViewController {
             textField.autocorrectionType = .no
         }
 
-        if type == .smb {
-            alert.addTextField { textField in
-                textField.placeholder = "Share Name"
-                textField.autocapitalizationType = .none
-                textField.autocorrectionType = .no
-            }
-        }
-
         if type == .sftp {
             alert.addTextField { textField in
                 textField.placeholder = "Port (22)"
@@ -185,7 +177,6 @@ final class NetworkViewController: UIViewController {
 
         alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
             let host = alert.textFields?.first?.text ?? ""
-            let share = alert.textFields?.first(where: { $0.placeholder == "Share Name" })?.text
             let username = alert.textFields?.first(where: { $0.placeholder?.contains("Username") == true })?.text ?? ""
             let password = alert.textFields?.first(where: { $0.placeholder == "Password" })?.text ?? ""
             var port: Int? = nil
@@ -195,7 +186,7 @@ final class NetworkViewController: UIViewController {
 
             self?.connectWithCredentials(
                 host: host,
-                share: share,
+                share: nil,
                 type: type,
                 username: username,
                 password: password,
@@ -232,14 +223,6 @@ final class NetworkViewController: UIViewController {
 
         let alert = UIAlertController(title: title, message: server.address, preferredStyle: .alert)
 
-        if server.type == .smb {
-            alert.addTextField { textField in
-                textField.placeholder = "Share Name"
-                textField.autocapitalizationType = .none
-                textField.autocorrectionType = .no
-            }
-        }
-
         if server.type == .sftp {
             alert.addTextField { textField in
                 textField.placeholder = "Port"
@@ -259,7 +242,6 @@ final class NetworkViewController: UIViewController {
         }
 
         alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
-            let share = alert.textFields?.first(where: { $0.placeholder == "Share Name" })?.text
             let username = alert.textFields?.first(where: { $0.placeholder == "Username" })?.text ?? ""
             let password = alert.textFields?.first(where: { $0.placeholder == "Password" })?.text ?? ""
             var port: Int? = nil
@@ -269,7 +251,7 @@ final class NetworkViewController: UIViewController {
 
             self?.connectWithCredentials(
                 host: server.address,
-                share: share,
+                share: nil,
                 type: server.type,
                 username: username,
                 password: password,
@@ -292,46 +274,149 @@ final class NetworkViewController: UIViewController {
         let loading = UIAlertController(title: "Connecting...", message: nil, preferredStyle: .alert)
         present(loading, animated: true)
 
-        Task {
-            var success = true
-            var errorMessage: String?
+        Task { [weak self] in
+            guard let self else { return }
 
-            // TODO: Actual connection test
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            if type == .smb {
+                // For SMB: login first, then discover shares
+                do {
+                    let client = SMBClientWrapper()
+                    try await client.login(host: host, port: port ?? 445, username: username, password: password, domain: nil)
 
-            await MainActor.run {
-                loading.dismiss(animated: true) { [weak self] in
-                    if success {
-                        let saved = SavedServer(
-                            name: host,
-                            address: host,
+                    let shares = try await client.listShares()
+                    // Filter out IPC$ and print shares
+                    let diskShares = shares.filter { !$0.name.hasSuffix("$") }
+
+                    await MainActor.run {
+                        loading.dismiss(animated: true) { [weak self] in
+                            guard let self else { return }
+                            if diskShares.isEmpty {
+                                let alert = UIAlertController(
+                                    title: "No Shares Found",
+                                    message: "No accessible shares on this server",
+                                    preferredStyle: .alert
+                                )
+                                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                                present(alert, animated: true)
+                            } else if diskShares.count == 1 {
+                                // Auto-select single share
+                                self.saveAndBrowse(
+                                    host: host,
+                                    share: diskShares[0].name,
+                                    type: type,
+                                    username: username,
+                                    password: password,
+                                    port: port
+                                )
+                            } else {
+                                // Show share picker
+                                self.showSharePicker(
+                                    host: host,
+                                    shares: diskShares,
+                                    type: type,
+                                    username: username,
+                                    password: password,
+                                    port: port
+                                )
+                            }
+                        }
+                    }
+
+                    await client.disconnect()
+                } catch {
+                    await MainActor.run {
+                        loading.dismiss(animated: true) { [weak self] in
+                            guard let self else { return }
+                            let alert = UIAlertController(
+                                title: "Connection Failed",
+                                message: error.localizedDescription,
+                                preferredStyle: .alert
+                            )
+                            alert.addAction(UIAlertAction(title: "OK", style: .default))
+                            present(alert, animated: true)
+                        }
+                    }
+                }
+            } else {
+                // For SFTP/WebDAV: connect directly
+                try? await Task.sleep(nanoseconds: 500_000_000)
+
+                await MainActor.run {
+                    loading.dismiss(animated: true) { [weak self] in
+                        guard let self else { return }
+                        self.saveAndBrowse(
+                            host: host,
                             share: share,
                             type: type,
                             username: username,
                             password: password,
                             port: port
                         )
-
-                        // Only add if not already saved
-                        if self?.savedServers.first(where: { $0.address == host }) == nil {
-                            self?.savedServers.append(saved)
-                            SavedServer.save(self?.savedServers ?? [])
-                            self?.tableView.reloadData()
-                        }
-
-                        self?.browseFiles(server: saved)
-                    } else {
-                        let alert = UIAlertController(
-                            title: "Connection Failed",
-                            message: errorMessage ?? "Unknown error",
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(alert, animated: true)
                     }
                 }
             }
         }
+    }
+
+    private func showSharePicker(
+        host: String,
+        shares: [SMBShare],
+        type: ServerType,
+        username: String,
+        password: String,
+        port: Int?
+    ) {
+        let alert = UIAlertController(title: "Select Share", message: nil, preferredStyle: .actionSheet)
+
+        for share in shares {
+            let title = share.comment.isEmpty ? share.name : "\(share.name) - \(share.comment)"
+            alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
+                self?.saveAndBrowse(
+                    host: host,
+                    share: share.name,
+                    type: type,
+                    username: username,
+                    password: password,
+                    port: port
+                )
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+        }
+        present(alert, animated: true)
+    }
+
+    private func saveAndBrowse(
+        host: String,
+        share: String?,
+        type: ServerType,
+        username: String,
+        password: String,
+        port: Int?
+    ) {
+        let saved = SavedServer(
+            name: host,
+            address: host,
+            share: share,
+            type: type,
+            username: username,
+            password: password,
+            port: port
+        )
+
+        // Only add if not already saved
+        if savedServers.first(where: { $0.address == host && $0.share == share }) == nil {
+            savedServers.append(saved)
+            SavedServer.save(savedServers)
+            tableView.reloadData()
+        }
+
+        browseFiles(server: saved)
     }
 
     private func browseFiles(server: SavedServer) {
@@ -362,7 +447,7 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
         print("Discovery error: \(errorDict)")
     }
 
-    func netServiceDidResolve(_ sender: NetService) {
+    func netServiceDidResolveAddress(_ sender: NetService) {
         var type: ServerType?
 
         if sender.type.contains("smb") {
