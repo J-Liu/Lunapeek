@@ -47,7 +47,8 @@ final class RemoteFileBrowserViewController: UIViewController {
         let columns = floor(availableWidth / itemWidth)
         let spacing = layout.minimumInteritemSpacing * (columns - 1)
         let finalWidth = floor((availableWidth - spacing) / columns)
-        let itemHeight = finalWidth + 40 // icon + name + button
+        // Height matches content: icon(64) + title(28) + button(24) + spacing(24) + padding(16)
+        let itemHeight: CGFloat = 140
 
         layout.itemSize = CGSize(width: finalWidth, height: itemHeight)
     }
@@ -855,18 +856,18 @@ final class FileItemCell: UICollectionViewCell {
         NSLayoutConstraint.activate([
             iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
             iconView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 44),
-            iconView.heightAnchor.constraint(equalToConstant: 44),
+            iconView.widthAnchor.constraint(equalToConstant: 64),
+            iconView.heightAnchor.constraint(equalToConstant: 64),
 
             titleLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 4),
             titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
             titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
 
-            menuButton.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            menuButton.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
             menuButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             menuButton.widthAnchor.constraint(equalToConstant: 44),
-            menuButton.heightAnchor.constraint(equalToConstant: 28),
-            menuButton.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -4),
+            menuButton.heightAnchor.constraint(equalToConstant: 24),
+            menuButton.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8),
 
             selectionOverlay.topAnchor.constraint(equalTo: contentView.topAnchor),
             selectionOverlay.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -882,7 +883,7 @@ final class FileItemCell: UICollectionViewCell {
     func configure(with item: RemoteFileItem, isSelected: Bool) {
         titleLabel.text = item.name
 
-        let config = UIImage.SymbolConfiguration(pointSize: 36, weight: .regular)
+        let config = UIImage.SymbolConfiguration(pointSize: 48, weight: .regular)
         iconView.preferredSymbolConfiguration = config
 
         if item.isDirectory {
