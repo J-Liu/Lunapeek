@@ -303,10 +303,10 @@ final class RemoteFileBrowserViewController: UIViewController {
 
                 do {
                     if let client = smbClient {
-                        try await client.deleteFile(path: remotePath)
+                        try await client.deleteFile(path: remotePath, isDirectory: file.isDirectory)
                         deletedCount += 1
                     } else if let client = sftpClient {
-                        try await client.deleteFile(path: remotePath)
+                        try await client.deleteFile(path: remotePath, isDirectory: file.isDirectory)
                         deletedCount += 1
                     }
                 } catch {

@@ -118,22 +118,15 @@ public final class SMBClientWrapper: SMBClientProtocol {
         }
     }
 
-    public func deleteFile(path: String) async throws {
+    public func deleteFile(path: String, isDirectory: Bool = false) async throws {
         guard let client = client, _isConnected else {
             throw SMBError.notConnected
         }
 
         do {
-            // Check if it's a directory or file
-            let files = try await client.listDirectory(path: path)
-            if let file = files.first(where: { $0.name == (path as NSString).lastPathComponent }) {
-                if file.isDirectory {
-                    try await client.deleteDirectory(path: path)
-                } else {
-                    try await client.deleteFile(path: path)
-                }
+            if isDirectory {
+                try await client.deleteDirectory(path: path)
             } else {
-                // Try deleting as file
                 try await client.deleteFile(path: path)
             }
         } catch {

@@ -110,14 +110,18 @@ public final class SFTPClientWrapper: SFTPClientProtocol {
         // Citadel doesn't support direct cancellation
     }
 
-    public func deleteFile(path: String) async throws {
+    public func deleteFile(path: String, isDirectory: Bool = false) async throws {
         guard let sshClient = sshClient else {
             throw SFTPError.notConnected
         }
 
         do {
             try await sshClient.withSFTP { sftp in
-                try await sftp.remove(at: path)
+                if isDirectory {
+                    try await sftp.rmdir(at: path)
+                } else {
+                    try await sftp.remove(at: path)
+                }
             }
         } catch {
             throw SFTPError.fileNotFound
