@@ -15,6 +15,7 @@ final class NetworkViewController: UIViewController {
     private var sftpBrowser: NetServiceBrowser?
     private var afpBrowser: NetServiceBrowser?
     private var sshBrowser: NetServiceBrowser?
+    private var resolvingServices: [NetService] = []  // Keep services alive while resolving
 
     private lazy var tableView: UITableView = {
         let tv = UITableView(frame: .zero, style: .insetGrouped)
@@ -96,6 +97,7 @@ final class NetworkViewController: UIViewController {
         sftpBrowser?.stop()
         afpBrowser?.stop()
         sshBrowser?.stop()
+        resolvingServices.removeAll()
         tableView.reloadData()
     }
 
@@ -459,24 +461,28 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
         print("Found service: \(service.name) type: \(service.type)")
         service.delegate = self
+        resolvingServices.append(service)  // Keep reference
         service.resolve(withTimeout: 10.0)
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
         print("Service removed: \(service.name)")
+        resolvingServices.removeAll { $0 === service }
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
         print("Discovery error: \(errorDict)")
-        // Could be due to missing permissions or network unavailability
     }
 
     func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
         print("Service resolution failed: \(sender.name) error: \(errorDict)")
+        resolvingServices.removeAll { $0 === sender }
     }
 
     func netServiceDidResolveAddress(_ sender: NetService) {
         print("Resolved service: \(sender.name) addresses: \(sender.addresses?.count ?? 0)")
+        resolvingServices.removeAll { $0 === sender }
+
         var type: ServerType?
 
         if sender.type.contains("smb") {
