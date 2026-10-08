@@ -807,76 +807,23 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
     }
 
     private func showInfo(for item: RemoteFileItem) {
-        let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
+        var info = "Name: \(item.name)\n"
+        info += "Type: \(item.isDirectory ? "Folder" : "File")\n"
 
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Loading...", message: "Calculating folder size", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-
-        Task { [weak self] in
-            guard let self else { return }
-
-            var info = "Name: \(item.name)\n"
-            info += "Type: \(item.isDirectory ? "Folder" : "File")\n"
-
-            if item.isDirectory {
-                // Calculate directory contents
-                var itemCount = 0
-                var totalSize: Int64 = 0
-
-                do {
-                    var pathsToProcess = [remotePath]
-                    while !pathsToProcess.isEmpty {
-                        let currentPathToProcess = pathsToProcess.removeFirst()
-                        if let client = smbClient {
-                            let files = try await client.listDirectory(path: currentPathToProcess)
-                            for file in files {
-                                if file.isDirectory {
-                                    pathsToProcess.append(currentPathToProcess == "/" ? "/\(file.name)" : "\(currentPathToProcess)/\(file.name)")
-                                } else {
-                                    totalSize += file.size
-                                    itemCount += 1
-                                }
-                            }
-                        } else if let client = sftpClient {
-                            let files = try await client.listDirectory(path: currentPathToProcess)
-                            for file in files {
-                                if file.isDirectory {
-                                    pathsToProcess.append(currentPathToProcess == "/" ? "/\(file.name)" : "\(currentPathToProcess)/\(file.name)")
-                                } else {
-                                    totalSize += file.size
-                                    itemCount += 1
-                                }
-                            }
-                        }
-                    }
-
-                    info += "Items: \(itemCount)\n"
-                    info += "Size: \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))\n"
-                } catch {
-                    info += "Size: Unable to calculate\n"
-                }
-            } else {
-                if let size = item.size {
-                    info += "Size: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))\n"
-                }
-            }
-
-            if let modified = item.modified {
-                let formatter = DateFormatter()
-                formatter.dateStyle = .full
-                formatter.timeStyle = .long
-                info += "Modified: \(formatter.string(from: modified))\n"
-            }
-
-            await MainActor.run { [weak self] in
-                loadingAlert.dismiss(animated: true) {
-                    let alert = UIAlertController(title: "Info", message: info, preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self?.present(alert, animated: true)
-                }
-            }
+        if !item.isDirectory, let size = item.size {
+            info += "Size: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))\n"
         }
+
+        if let modified = item.modified {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .full
+            formatter.timeStyle = .long
+            info += "Modified: \(formatter.string(from: modified))"
+        }
+
+        let alert = UIAlertController(title: "Info", message: info, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }
 
