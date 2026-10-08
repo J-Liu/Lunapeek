@@ -210,7 +210,7 @@ extension PlaylistViewController: UITableViewDataSource, UITableViewDelegate {
         let playlists = PlaylistManager.shared.getPlaylists()
         let playlist = playlists[indexPath.row]
 
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             let renameAction = UIAction(title: "Rename", image: UIImage(systemName: "pencil")) { [weak self] _ in
                 self?.renamePlaylist(at: indexPath.row, currentName: playlist.name)
             }

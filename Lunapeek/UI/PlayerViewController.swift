@@ -156,9 +156,19 @@ final class PlayerViewController: UIViewController {
     private func activateAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback)
             try session.setActive(true)
         } catch {
             print("Failed to activate audio session: \(error)")
+        }
+    }
+
+    private func deactivateAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("Failed to deactivate audio session: \(error)")
         }
     }
 
@@ -186,6 +196,7 @@ final class PlayerViewController: UIViewController {
     @objc private func closeTapped() {
         Task {
             await playerEngine?.stop()
+            deactivateAudioSession()
             await MainActor.run {
                 self.dismiss(animated: true)
             }

@@ -10,18 +10,9 @@ import AVFoundation
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        configureAudioSession()
+        // Don't configure audio session on launch - only when playback starts
+        // This prevents interrupting other audio apps (like TikTok, music players)
         return true
-    }
-
-    private func configureAudioSession() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback)
-            // Don't activate on launch - only when playback starts
-        } catch {
-            print("Failed to configure audio session: \(error)")
-        }
     }
 
     // MARK: UISceneSession Lifecycle
