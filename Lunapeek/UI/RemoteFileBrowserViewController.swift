@@ -175,6 +175,13 @@ final class RemoteFileBrowserViewController: UIViewController {
                     )
                     try await client.connect(configuration: config)
                     sftpClient = client
+                    // Get home directory for SFTP
+                    do {
+                        currentPath = try await client.getHomeDirectory()
+                    } catch {
+                        // Fall back to root if home directory can't be determined
+                        currentPath = "/"
+                    }
                 case .webdav:
                     // TODO: Implement WebDAV
                     break

@@ -87,6 +87,7 @@ public protocol SFTPClientProtocol {
         progress: @escaping (SFTPProgress) -> Void
     ) async throws
     func cancelDownload() async
+    func getHomeDirectory() async throws -> String
     var isConnected: Bool { get }
 }
 

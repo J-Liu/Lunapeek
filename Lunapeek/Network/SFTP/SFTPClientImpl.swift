@@ -133,4 +133,14 @@ public final class SFTPClientWrapper: SFTPClientProtocol {
             throw SFTPError.fileNotFound
         }
     }
+
+    public func getHomeDirectory() async throws -> String {
+        guard let sshClient = sshClient else {
+            throw SFTPError.notConnected
+        }
+
+        return try await sshClient.withSFTP { sftp in
+            try await sftp.getRealPath(atPath: ".")
+        }
+    }
 }
