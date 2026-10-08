@@ -239,7 +239,8 @@ final class NetworkViewController: UIViewController {
     }
 
     private func connect(to server: NetworkServer) {
-        if let saved = savedServers.first(where: { $0.address == server.address }) {
+        // Look up saved server by address AND type
+        if let saved = savedServers.first(where: { $0.address == server.address && $0.type == server.type }) {
             connectWithCredentials(
                 host: saved.address,
                 share: saved.share,

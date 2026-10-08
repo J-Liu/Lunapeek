@@ -60,8 +60,14 @@ public final class SFTPClientWrapper: SFTPClientProtocol {
             // listDirectory returns [SFTPMessage.Name], each Name contains components
             // We need to flatten the components
             var files: [SFTPFile] = []
+            let showHidden = Settings.shared.showHiddenFiles
+
             for name in names {
                 for component in name.components {
+                    // Filter hidden files if setting is disabled
+                    if !showHidden && component.filename.hasPrefix(".") {
+                        continue
+                    }
                     // Check if directory using S_IFDIR (0o40000) in permissions
                     let isDirectory = (component.attributes.permissions ?? 0) & 0o170000 == 0o040000
                     let file = SFTPFile(

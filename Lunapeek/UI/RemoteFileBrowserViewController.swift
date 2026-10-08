@@ -7,7 +7,7 @@ import UIKit
 
 final class RemoteFileBrowserViewController: UIViewController {
     private let server: SavedServer
-    private var currentPath: String = "/"
+    private var currentPath: String
     private var items: [RemoteFileItem] = []
     private var selectedItems: Set<IndexPath> = []
     private var isSelecting = false
@@ -55,6 +55,8 @@ final class RemoteFileBrowserViewController: UIViewController {
 
     init(server: SavedServer) {
         self.server = server
+        // SFTP starts at home directory, others start at root
+        self.currentPath = server.type == .sftp ? "~" : "/"
         super.init(nibName: nil, bundle: nil)
     }
 
