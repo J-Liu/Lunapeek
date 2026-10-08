@@ -414,11 +414,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
 
     private func showItemMenu(for item: RemoteFileItem, at indexPath: IndexPath) {
         let menuVC = UIViewController()
-        menuVC.modalPresentationStyle = .pageSheet
-        if let sheet = menuVC.sheetPresentationController {
-            sheet.detents = [.medium()]
-            sheet.prefersGrabberVisible = true
-        }
+        menuVC.modalPresentationStyle = .formSheet
 
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -553,6 +549,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         NSLayoutConstraint.activate([
             iconView.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
             iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            iconView.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -12),
             iconView.widthAnchor.constraint(equalToConstant: 60),
             iconView.heightAnchor.constraint(equalToConstant: 60),
 
@@ -563,6 +560,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
             detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             detailLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            detailLabel.bottomAnchor.constraint(lessThanOrEqualTo: iconView.bottomAnchor),
             detailLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -12)
         ])
 
