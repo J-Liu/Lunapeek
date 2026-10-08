@@ -58,9 +58,11 @@ final class RemoteFileBrowserViewController: UIViewController {
     }
 
     deinit {
+        let smb = smbClient
+        let sftp = sftpClient
         Task {
-            await smbClient?.disconnect()
-            await sftpClient?.disconnect()
+            await smb?.disconnect()
+            await sftp?.disconnect()
         }
     }
 
@@ -100,7 +102,8 @@ final class RemoteFileBrowserViewController: UIViewController {
     }
 
     private func connectAndLoad() {
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 switch server.type {
                 case .smb:
@@ -130,14 +133,15 @@ final class RemoteFileBrowserViewController: UIViewController {
                 }
                 await loadDirectory()
             } catch {
-                await MainActor.run {
+                await MainActor.run { [weak self] in
+                    guard let self, isViewLoaded, view.window != nil else { return }
                     let alert = UIAlertController(
                         title: "Connection Failed",
                         message: error.localizedDescription,
                         preferredStyle: .alert
                     )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
-                        self.navigationController?.popViewController(animated: true)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                        self?.navigationController?.popViewController(animated: true)
                     })
                     present(alert, animated: true)
                 }
@@ -173,12 +177,14 @@ final class RemoteFileBrowserViewController: UIViewController {
                 files = []
             }
 
-            await MainActor.run {
+            await MainActor.run { [weak self] in
+                guard let self else { return }
                 self.items = files
                 self.collectionView.reloadData()
             }
         } catch {
-            await MainActor.run {
+            await MainActor.run { [weak self] in
+                guard let self, isViewLoaded, view.window != nil else { return }
                 let alert = UIAlertController(
                     title: "Error",
                     message: error.localizedDescription,
@@ -206,7 +212,8 @@ final class RemoteFileBrowserViewController: UIViewController {
         guard !selectedItems.isEmpty else { return }
         let files = selectedItems.map { items[$0.item] }
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             for file in files {
                 guard !file.isDirectory else { continue }
 
@@ -221,23 +228,25 @@ final class RemoteFileBrowserViewController: UIViewController {
                         try await client.downloadFile(remotePath: remotePath, localURL: localURL) { _ in }
                     }
                 } catch {
-                    await MainActor.run {
+                    await MainActor.run { [weak self] in
+                        guard let self, isViewLoaded, view.window != nil else { return }
                         let alert = UIAlertController(
                             title: "Download Failed",
                             message: "Failed to download \(file.name): \(error.localizedDescription)",
                             preferredStyle: .alert
                         )
                         alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(alert, animated: true)
+                        present(alert, animated: true)
                     }
                     return
                 }
             }
 
-            await MainActor.run {
-                self.selectedItems.removeAll()
-                self.collectionView.reloadData()
-                self.updateToolbar()
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                selectedItems.removeAll()
+                collectionView.reloadData()
+                updateToolbar()
 
                 let alert = UIAlertController(
                     title: "Download Complete",
@@ -245,7 +254,7 @@ final class RemoteFileBrowserViewController: UIViewController {
                     preferredStyle: .alert
                 )
                 alert.addAction(UIAlertAction(title: "OK", style: .default))
-                self.present(alert, animated: true)
+                present(alert, animated: true)
             }
         }
     }

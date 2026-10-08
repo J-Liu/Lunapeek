@@ -85,7 +85,7 @@ public protocol SMBClientProtocol {
 }
 
 /// SMB client error.
-public enum SMBError: Error {
+public enum SMBError: Error, LocalizedError {
     case connectionFailed(Error?)
     case authenticationFailed
     case shareNotFound
@@ -94,4 +94,25 @@ public enum SMBError: Error {
     case notConnected
     case cancelled
     case unsupportedVersion
+
+    public var errorDescription: String? {
+        switch self {
+        case .connectionFailed(let error):
+            return "Connection failed: \(error?.localizedDescription ?? "Unknown error")"
+        case .authenticationFailed:
+            return "Authentication failed"
+        case .shareNotFound:
+            return "Share not found"
+        case .fileNotFound:
+            return "File not found"
+        case .downloadFailed(let error):
+            return "Download failed: \(error?.localizedDescription ?? "Unknown error")"
+        case .notConnected:
+            return "Not connected"
+        case .cancelled:
+            return "Operation cancelled"
+        case .unsupportedVersion:
+            return "Unsupported SMB version"
+        }
+    }
 }
