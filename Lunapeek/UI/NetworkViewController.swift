@@ -157,6 +157,14 @@ final class NetworkViewController: UIViewController {
             textField.autocorrectionType = .no
         }
 
+        if type == .smb {
+            alert.addTextField { textField in
+                textField.placeholder = "Share Name"
+                textField.autocapitalizationType = .none
+                textField.autocorrectionType = .no
+            }
+        }
+
         if type == .sftp {
             alert.addTextField { textField in
                 textField.placeholder = "Port (22)"
@@ -177,6 +185,7 @@ final class NetworkViewController: UIViewController {
 
         alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
             let host = alert.textFields?.first?.text ?? ""
+            let share = alert.textFields?.first(where: { $0.placeholder == "Share Name" })?.text
             let username = alert.textFields?.first(where: { $0.placeholder?.contains("Username") == true })?.text ?? ""
             let password = alert.textFields?.first(where: { $0.placeholder == "Password" })?.text ?? ""
             var port: Int? = nil
@@ -186,6 +195,7 @@ final class NetworkViewController: UIViewController {
 
             self?.connectWithCredentials(
                 host: host,
+                share: share,
                 type: type,
                 username: username,
                 password: password,
@@ -201,6 +211,7 @@ final class NetworkViewController: UIViewController {
         if let saved = savedServers.first(where: { $0.address == server.address }) {
             connectWithCredentials(
                 host: saved.address,
+                share: saved.share,
                 type: saved.type,
                 username: saved.username,
                 password: saved.password,
@@ -221,6 +232,14 @@ final class NetworkViewController: UIViewController {
 
         let alert = UIAlertController(title: title, message: server.address, preferredStyle: .alert)
 
+        if server.type == .smb {
+            alert.addTextField { textField in
+                textField.placeholder = "Share Name"
+                textField.autocapitalizationType = .none
+                textField.autocorrectionType = .no
+            }
+        }
+
         if server.type == .sftp {
             alert.addTextField { textField in
                 textField.placeholder = "Port"
@@ -240,6 +259,7 @@ final class NetworkViewController: UIViewController {
         }
 
         alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in
+            let share = alert.textFields?.first(where: { $0.placeholder == "Share Name" })?.text
             let username = alert.textFields?.first(where: { $0.placeholder == "Username" })?.text ?? ""
             let password = alert.textFields?.first(where: { $0.placeholder == "Password" })?.text ?? ""
             var port: Int? = nil
@@ -249,6 +269,7 @@ final class NetworkViewController: UIViewController {
 
             self?.connectWithCredentials(
                 host: server.address,
+                share: share,
                 type: server.type,
                 username: username,
                 password: password,
@@ -262,6 +283,7 @@ final class NetworkViewController: UIViewController {
 
     private func connectWithCredentials(
         host: String,
+        share: String?,
         type: ServerType,
         username: String,
         password: String,
@@ -283,6 +305,7 @@ final class NetworkViewController: UIViewController {
                         let saved = SavedServer(
                             name: host,
                             address: host,
+                            share: share,
                             type: type,
                             username: username,
                             password: password,
@@ -479,6 +502,7 @@ extension NetworkViewController: UITableViewDataSource, UITableViewDelegate {
             let server = savedServers[indexPath.row]
             connectWithCredentials(
                 host: server.address,
+                share: server.share,
                 type: server.type,
                 username: server.username,
                 password: server.password,
@@ -509,6 +533,7 @@ struct NetworkServer {
 struct SavedServer: Codable {
     let name: String
     let address: String
+    let share: String?
     let type: ServerType
     let username: String
     let password: String

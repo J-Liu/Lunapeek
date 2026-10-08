@@ -107,11 +107,26 @@ final class RemoteFileBrowserViewController: UIViewController {
             do {
                 switch server.type {
                 case .smb:
+                    guard let shareName = server.share, !shareName.isEmpty else {
+                        await MainActor.run { [weak self] in
+                            guard let self, isViewLoaded, view.window != nil else { return }
+                            let alert = UIAlertController(
+                                title: "Missing Share Name",
+                                message: "Please specify a share name for this SMB server",
+                                preferredStyle: .alert
+                            )
+                            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                                self?.navigationController?.popViewController(animated: true)
+                            })
+                            present(alert, animated: true)
+                        }
+                        return
+                    }
                     let client = SMBClientWrapper()
                     let config = SMBConfiguration(
                         host: server.address,
                         port: server.port ?? 445,
-                        share: server.name,
+                        share: shareName,
                         username: server.username,
                         password: server.password
                     )
