@@ -696,9 +696,17 @@ enum ServerType: String, Codable {
 
     var icon: String {
         switch self {
-        case .smb: return "folder.fill"
+        case .smb: return "externaldrive.fill"
         case .sftp: return "terminal.fill"
         case .webdav: return "cloud.fill"
+        }
+    }
+
+    var iconColor: UIColor {
+        switch self {
+        case .smb: return .systemBlue
+        case .sftp: return .systemOrange
+        case .webdav: return .systemPurple
         }
     }
 }
@@ -761,6 +769,7 @@ final class ServerCell: UITableViewCell {
 
     func configure(with name: String, address: String, type: ServerType, isSaved: Bool) {
         iconView.image = UIImage(systemName: type.icon)
+        iconView.tintColor = type.iconColor
         titleLabel.text = name
         subtitleLabel.text = address
         savedBadge.isHidden = !isSaved
