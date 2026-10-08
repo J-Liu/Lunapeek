@@ -538,7 +538,8 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            if !self.discoveredServers.contains(where: { $0.address == address }) {
+            // Dedupe by address + type combination
+            if !self.discoveredServers.contains(where: { $0.address == address && $0.type == type }) {
                 self.discoveredServers.append(server)
                 self.tableView.reloadData()
             }
