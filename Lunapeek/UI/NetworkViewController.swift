@@ -13,6 +13,8 @@ final class NetworkViewController: UIViewController {
     private var scanTimer: Timer?
     private var smbBrowser: NetServiceBrowser?
     private var sftpBrowser: NetServiceBrowser?
+    private var afpBrowser: NetServiceBrowser?
+    private var sshBrowser: NetServiceBrowser?
 
     private lazy var tableView: UITableView = {
         let tv = UITableView(frame: .zero, style: .insetGrouped)
@@ -74,10 +76,14 @@ final class NetworkViewController: UIViewController {
         isScanning = true
         tableView.reloadData()
 
+        // Start all discovery methods
         discoverSMBServers()
         discoverSFTPServers()
+        discoverAFPServers()
+        discoverSSHServers()
 
-        scanTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+        // Extended scan time - 10 seconds
+        scanTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
             self?.stopDiscovery()
         }
     }
@@ -86,6 +92,10 @@ final class NetworkViewController: UIViewController {
         isScanning = false
         scanTimer?.invalidate()
         scanTimer = nil
+        smbBrowser?.stop()
+        sftpBrowser?.stop()
+        afpBrowser?.stop()
+        sshBrowser?.stop()
         tableView.reloadData()
     }
 
@@ -93,24 +103,24 @@ final class NetworkViewController: UIViewController {
         smbBrowser = NetServiceBrowser()
         smbBrowser?.delegate = self
         smbBrowser?.searchForServices(ofType: "_smb._tcp.", inDomain: "local.")
-
-        // Also try _afpovertcp for macOS file sharing
-        let afpBrowser = NetServiceBrowser()
-        afpBrowser.delegate = self
-        afpBrowser.searchForServices(ofType: "_afpovertcp._tcp.", inDomain: "local.")
-        objc_setAssociatedObject(self, &afpBrowserKey, afpBrowser, .OBJC_ASSOCIATION_RETAIN)
     }
 
     private func discoverSFTPServers() {
         sftpBrowser = NetServiceBrowser()
         sftpBrowser?.delegate = self
         sftpBrowser?.searchForServices(ofType: "_sftp-ssh._tcp.", inDomain: "local.")
+    }
 
-        // Also try _ssh for standard SSH
-        let sshBrowser = NetServiceBrowser()
-        sshBrowser.delegate = self
-        sshBrowser.searchForServices(ofType: "_ssh._tcp.", inDomain: "local.")
-        objc_setAssociatedObject(self, &sshBrowserKey, sshBrowser, .OBJC_ASSOCIATION_RETAIN)
+    private func discoverAFPServers() {
+        afpBrowser = NetServiceBrowser()
+        afpBrowser?.delegate = self
+        afpBrowser?.searchForServices(ofType: "_afpovertcp._tcp.", inDomain: "local.")
+    }
+
+    private func discoverSSHServers() {
+        sshBrowser = NetServiceBrowser()
+        sshBrowser?.delegate = self
+        sshBrowser?.searchForServices(ofType: "_ssh._tcp.", inDomain: "local.")
     }
 
     @objc private func refresh() {
@@ -445,23 +455,28 @@ final class NetworkViewController: UIViewController {
     }
 }
 
-private var smbBrowserKey: UInt8 = 0
-private var sftpBrowserKey: UInt8 = 0
-
-private var afpBrowserKey: UInt8 = 0
-private var sshBrowserKey: UInt8 = 0
-
 extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+        print("Found service: \(service.name) type: \(service.type)")
         service.delegate = self
-        service.resolve(withTimeout: 5.0)
+        service.resolve(withTimeout: 10.0)
+    }
+
+    func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
+        print("Service removed: \(service.name)")
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
         print("Discovery error: \(errorDict)")
+        // Could be due to missing permissions or network unavailability
+    }
+
+    func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
+        print("Service resolution failed: \(sender.name) error: \(errorDict)")
     }
 
     func netServiceDidResolveAddress(_ sender: NetService) {
+        print("Resolved service: \(sender.name) addresses: \(sender.addresses?.count ?? 0)")
         var type: ServerType?
 
         if sender.type.contains("smb") {
@@ -472,9 +487,13 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
             type = .smb  // Treat AFP as file server
         }
 
-        guard let type = type else { return }
+        guard let type = type else {
+            print("Unknown service type: \(sender.type)")
+            return
+        }
 
         let address = resolveAddress(for: sender)
+        print("Resolved address: \(address) for \(sender.name)")
 
         let server = NetworkServer(
             name: sender.name,
@@ -497,35 +516,40 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
             return service.name
         }
 
+        var ipv4Address: String?
+        var ipv6Address: String?
+
         for data in addresses {
             var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            data.withUnsafeBytes { ptr in
-                if let addr = ptr.baseAddress {
-                    let result = getnameinfo(
-                        addr.assumingMemoryBound(to: sockaddr.self),
-                        socklen_t(data.count),
-                        &hostname,
-                        socklen_t(hostname.count),
-                        nil,
-                        0,
-                        NI_NUMERICHOST
-                    )
-                    if result == 0 {
-                        let ip = String(cString: hostname)
-                        // Prefer IPv4
-                        if !ip.contains(":") {
-                            return
-                        }
-                    }
-                }
+            let result = data.withUnsafeBytes { ptr -> Int32 in
+                guard let addr = ptr.baseAddress else { return -1 }
+                return getnameinfo(
+                    addr.assumingMemoryBound(to: sockaddr.self),
+                    socklen_t(data.count),
+                    &hostname,
+                    socklen_t(hostname.count),
+                    nil,
+                    0,
+                    NI_NUMERICHOST
+                )
             }
-            let ip = String(cString: hostname)
-            if !ip.isEmpty {
-                return ip
+
+            if result == 0 {
+                let ip = String(cString: hostname)
+                if ip.contains(":") {
+                    // IPv6
+                    if ipv6Address == nil {
+                        ipv6Address = ip
+                    }
+                } else {
+                    // IPv4 - prefer this
+                    ipv4Address = ip
+                    break
+                }
             }
         }
 
-        return service.name
+        return ipv4Address ?? ipv6Address ?? service.name
     }
 }
 
