@@ -90,6 +90,17 @@ final class RemoteFileBrowserViewController: UIViewController {
         title = server.name
         view.backgroundColor = .systemBackground
 
+        // Custom back button
+        navigationItem.hidesBackButton = true
+        let backItem = UIBarButtonItem(
+            image: UIImage(systemName: "chevron.left"),
+            style: .plain,
+            target: self,
+            action: #selector(handleBack)
+        )
+        backItem.tintColor = .label
+        navigationItem.leftBarButtonItem = backItem
+
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             title: "Select",
             style: .plain,
@@ -234,6 +245,31 @@ final class RemoteFileBrowserViewController: UIViewController {
     private func updateToolbar() {
         navigationItem.rightBarButtonItem?.title = isSelecting ? "Cancel" : "Select"
         navigationController?.toolbar.isHidden = !isSelecting || selectedItems.isEmpty
+    }
+
+    @objc private func handleBack() {
+        if currentPath == "/" {
+            navigationController?.popViewController(animated: true)
+        } else {
+            // Go up one level
+            var pathComponents = currentPath.split(separator: "/")
+            if pathComponents.isEmpty {
+                currentPath = "/"
+                title = server.name
+            } else {
+                pathComponents.removeLast()
+                if pathComponents.isEmpty {
+                    currentPath = "/"
+                    title = server.name
+                } else {
+                    currentPath = "/" + pathComponents.joined(separator: "/")
+                    title = String(pathComponents.last!)
+                }
+            }
+            Task { [weak self] in
+                await self?.loadDirectory()
+            }
+        }
     }
 
     @objc private func toggleSelect() {
@@ -771,21 +807,76 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
     }
 
     private func showInfo(for item: RemoteFileItem) {
-        var info = "Name: \(item.name)\n"
-        info += "Type: \(item.isDirectory ? "Folder" : "File")\n"
-        if let size = item.size {
-            info += "Size: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))\n"
-        }
-        if let modified = item.modified {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .full
-            formatter.timeStyle = .long
-            info += "Modified: \(formatter.string(from: modified))\n"
-        }
+        let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
 
-        let alert = UIAlertController(title: "Info", message: info, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Loading...", message: "Calculating folder size", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            var info = "Name: \(item.name)\n"
+            info += "Type: \(item.isDirectory ? "Folder" : "File")\n"
+
+            if item.isDirectory {
+                // Calculate directory contents
+                var itemCount = 0
+                var totalSize: Int64 = 0
+
+                do {
+                    var pathsToProcess = [remotePath]
+                    while !pathsToProcess.isEmpty {
+                        let currentPathToProcess = pathsToProcess.removeFirst()
+                        if let client = smbClient {
+                            let files = try await client.listDirectory(path: currentPathToProcess)
+                            for file in files {
+                                if file.isDirectory {
+                                    pathsToProcess.append(currentPathToProcess == "/" ? "/\(file.name)" : "\(currentPathToProcess)/\(file.name)")
+                                } else {
+                                    totalSize += file.size
+                                    itemCount += 1
+                                }
+                            }
+                        } else if let client = sftpClient {
+                            let files = try await client.listDirectory(path: currentPathToProcess)
+                            for file in files {
+                                if file.isDirectory {
+                                    pathsToProcess.append(currentPathToProcess == "/" ? "/\(file.name)" : "\(currentPathToProcess)/\(file.name)")
+                                } else {
+                                    totalSize += file.size
+                                    itemCount += 1
+                                }
+                            }
+                        }
+                    }
+
+                    info += "Items: \(itemCount)\n"
+                    info += "Size: \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))\n"
+                } catch {
+                    info += "Size: Unable to calculate\n"
+                }
+            } else {
+                if let size = item.size {
+                    info += "Size: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))\n"
+                }
+            }
+
+            if let modified = item.modified {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .full
+                formatter.timeStyle = .long
+                info += "Modified: \(formatter.string(from: modified))\n"
+            }
+
+            await MainActor.run { [weak self] in
+                loadingAlert.dismiss(animated: true) {
+                    let alert = UIAlertController(title: "Info", message: info, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(alert, animated: true)
+                }
+            }
+        }
     }
 }
 
