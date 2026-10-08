@@ -30,10 +30,10 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_dns-sd._udp</string>
-		<string>_smb._tcp.</string>
-		<string>_sftp-ssh._tcp.</string>
-		<string>_ssh._tcp.</string>
-		<string>_afpovertcp._tcp.</string>
+		<string>_smb._tcp</string>
+		<string>_sftp-ssh._tcp</string>
+		<string>_ssh._tcp</string>
+		<string>_afpovertcp._tcp</string>
 	</array>
 </dict>
 </plist>

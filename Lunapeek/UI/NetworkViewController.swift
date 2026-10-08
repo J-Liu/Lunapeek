@@ -102,25 +102,25 @@ final class NetworkViewController: UIViewController {
     private func discoverSMBServers() {
         smbBrowser = NetServiceBrowser()
         smbBrowser?.delegate = self
-        smbBrowser?.searchForServices(ofType: "_smb._tcp.", inDomain: "local.")
+        smbBrowser?.searchForServices(ofType: "_smb._tcp", inDomain: "local.")
     }
 
     private func discoverSFTPServers() {
         sftpBrowser = NetServiceBrowser()
         sftpBrowser?.delegate = self
-        sftpBrowser?.searchForServices(ofType: "_sftp-ssh._tcp.", inDomain: "local.")
+        sftpBrowser?.searchForServices(ofType: "_sftp-ssh._tcp", inDomain: "local.")
     }
 
     private func discoverAFPServers() {
         afpBrowser = NetServiceBrowser()
         afpBrowser?.delegate = self
-        afpBrowser?.searchForServices(ofType: "_afpovertcp._tcp.", inDomain: "local.")
+        afpBrowser?.searchForServices(ofType: "_afpovertcp._tcp", inDomain: "local.")
     }
 
     private func discoverSSHServers() {
         sshBrowser = NetServiceBrowser()
         sshBrowser?.delegate = self
-        sshBrowser?.searchForServices(ofType: "_ssh._tcp.", inDomain: "local.")
+        sshBrowser?.searchForServices(ofType: "_ssh._tcp", inDomain: "local.")
     }
 
     @objc private func refresh() {
