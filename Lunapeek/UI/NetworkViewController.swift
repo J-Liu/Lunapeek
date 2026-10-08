@@ -487,7 +487,7 @@ final class NetworkViewController: UIViewController {
 
 extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
-        log("Found: \(service.name) [\(service.type)]")
+        log("🔍 Found: \(service.name) [\(service.type)]")
         service.delegate = self
         resolvingServices.append(service)  // Keep reference
         service.resolve(withTimeout: 10.0)
@@ -499,16 +499,16 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
-        log("Error: \(errorDict)")
+        log("❌ Search error: \(errorDict)")
     }
 
     func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        log("Resolve failed: \(sender.name)")
+        log("❌ Resolve failed: \(sender.name) [\(sender.type)]")
         resolvingServices.removeAll { $0 === sender }
     }
 
     func netServiceDidResolveAddress(_ sender: NetService) {
-        log("Resolved: \(sender.name)")
+        log("✅ \(sender.name) [\(sender.type)]")
         resolvingServices.removeAll { $0 === sender }
 
         var type: ServerType?
@@ -522,12 +522,12 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
         }
 
         guard let type = type else {
-            log("Unknown: \(sender.type)")
+            log("❌ Unknown: \(sender.type)")
             return
         }
 
         let address = resolveAddress(for: sender)
-        log("-> \(address) [\(type)]")
+        log("→ \(address) (\(type))")
 
         let server = NetworkServer(
             name: sender.name,

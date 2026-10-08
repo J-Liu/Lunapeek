@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="arcGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c96a1e" stop-opacity="0.35"/>
+      <stop offset="38%" stop-color="#ff9a3c" stop-opacity="1"/>
+      <stop offset="42%" stop-color="#ffb45c" stop-opacity="1"/>
+      <stop offset="46%" stop-color="#ff9a3c" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#c96a1e" stop-opacity="0.35"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="40%" cy="100%" r="55%">
+      <stop offset="0%" stop-color="#ffb45c" stop-opacity="0.75"/>
+      <stop offset="40%" stop-color="#ff8a2c" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#ff8a2c" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <ellipse cx="410" cy="700" rx="380" ry="300" fill="url(#halo)" filter="url(#softGlow)"/>
+
+  <path d="M 120 720 Q 512 620 904 720"
+        fill="none"
+        stroke="url(#arcGradient)"
+        stroke-width="26"
+        stroke-linecap="round"/>
+</svg>

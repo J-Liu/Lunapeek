@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dns-sd._udp</string>
+		<string>_smb._tcp</string>
+		<string>_sftp-ssh._tcp</string>
+		<string>_ssh._tcp</string>
+		<string>_afpovertcp._tcp</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -24,16 +32,6 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
-	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>This app needs to discover network file servers on your local network.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_dns-sd._udp</string>
-		<string>_smb._tcp</string>
-		<string>_sftp-ssh._tcp</string>
-		<string>_ssh._tcp</string>
-		<string>_afpovertcp._tcp</string>
 	</array>
 </dict>
 </plist>
