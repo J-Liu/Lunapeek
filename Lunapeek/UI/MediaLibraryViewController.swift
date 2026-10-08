@@ -12,7 +12,7 @@ enum MediaType {
 
 final class MediaLibraryViewController: UIViewController {
     private let mediaType: MediaType
-    private var items: [MediaItem] = []
+    private var items: [LocalMediaItem] = []
     private var collectionView: UICollectionView!
 
     init(mediaType: MediaType) {
@@ -27,6 +27,10 @@ final class MediaLibraryViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
         loadMedia()
     }
 
@@ -67,26 +71,56 @@ final class MediaLibraryViewController: UIViewController {
     }
 
     private func loadMedia() {
-        // TODO: Load from Documents directory and media library
-        items = [
-            MediaItem(name: "Sample Video", type: mediaType, thumbnail: nil),
-            MediaItem(name: "Another File", type: mediaType, thumbnail: nil)
-        ]
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        var newItems: [LocalMediaItem] = []
+
+        let videoExtensions = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv"]
+        let audioExtensions = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma"]
+
+        let extensions = mediaType == .video ? videoExtensions : audioExtensions
+
+        do {
+            let files = try FileManager.default.contentsOfDirectory(
+                at: documentsPath,
+                includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+
+            for file in files {
+                let ext = file.pathExtension.lowercased()
+                if extensions.contains(ext) {
+                    let attrs = try file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                    let item = LocalMediaItem(
+                        name: file.lastPathComponent,
+                        url: file,
+                        size: Int64(attrs.fileSize ?? 0),
+                        modified: attrs.contentModificationDate
+                    )
+                    newItems.append(item)
+                }
+            }
+
+            newItems.sort { $0.modified ?? .distantPast > $1.modified ?? .distantPast }
+        } catch {
+            print("Error loading media: \(error)")
+        }
+
+        items = newItems
         collectionView.reloadData()
     }
 
     @objc private func addMediaTapped() {
         let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
 
-        alert.addAction(UIAlertAction(title: "Files", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: "Import from Files", style: .default) { [weak self] _ in
             self?.showFilePicker()
         })
 
-        alert.addAction(UIAlertAction(title: "Photos", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: "Import from Photos", style: .default) { [weak self] _ in
             self?.showPhotoPicker()
         })
 
-        alert.addAction(UIAlertAction(title: "URL", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: "Open URL", style: .default) { [weak self] _ in
             self?.showURLInput()
         })
 
@@ -99,7 +133,8 @@ final class MediaLibraryViewController: UIViewController {
     }
 
     private func showFilePicker() {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: mediaType == .video ? [.movie, .video] : [.audio])
+        let types: [UTType] = mediaType == .video ? [.movie, .video, .mpeg4Movie] : [.audio, .mp3, .aiff, .wav, .mpeg4Audio]
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types)
         picker.delegate = self
         picker.allowsMultipleSelection = true
         present(picker, animated: true)
@@ -138,6 +173,21 @@ final class MediaLibraryViewController: UIViewController {
         playerVC.modalPresentationStyle = .fullScreen
         present(playerVC, animated: true)
     }
+
+    private func delete(item: LocalMediaItem) {
+        do {
+            try FileManager.default.removeItem(at: item.url)
+            loadMedia()
+        } catch {
+            let alert = UIAlertController(
+                title: "Delete Failed",
+                message: error.localizedDescription,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+        }
+    }
 }
 
 extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionViewDelegate {
@@ -147,20 +197,51 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "MediaItemCell", for: indexPath) as! MediaItemCell
-        cell.configure(with: items[indexPath.item])
+        let item = items[indexPath.item]
+        cell.configure(with: item, mediaType: mediaType)
         return cell
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        // TODO: Open media item
+        let item = items[indexPath.item]
+        play(url: item.url)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        let item = items[indexPath.item]
+
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+            let deleteAction = UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
+                self?.delete(item: item)
+            }
+
+            let shareAction = UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                let activityVC = UIActivityViewController(activityItems: [item.url], applicationActivities: nil)
+                self?.present(activityVC, animated: true)
+            }
+
+            return UIMenu(title: "", children: [shareAction, deleteAction])
+        }
     }
 }
 
 extension MediaLibraryViewController: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let url = urls.first else { return }
-        play(url: url)
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+
+        for url in urls {
+            let destURL = documentsPath.appendingPathComponent(url.lastPathComponent)
+            do {
+                if FileManager.default.fileExists(atPath: destURL.path) {
+                    try FileManager.default.removeItem(at: destURL)
+                }
+                try FileManager.default.copyItem(at: url, to: destURL)
+            } catch {
+                print("Error copying file: \(error)")
+            }
+        }
+        loadMedia()
     }
 }
 
@@ -170,27 +251,42 @@ extension MediaLibraryViewController: PHPickerViewControllerDelegate {
         guard let result = results.first else { return }
 
         let itemProvider = result.itemProvider
-        if itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-            itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { [weak self] url, error in
-                if let url = url {
-                    DispatchQueue.main.async {
-                        self?.play(url: url)
+        let typeIdentifier = mediaType == .video ? UTType.movie.identifier : UTType.audio.identifier
+
+        if itemProvider.hasItemConformingToTypeIdentifier(typeIdentifier) {
+            itemProvider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { [weak self] url, error in
+                guard let url = url else { return }
+                let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let destURL = documentsPath.appendingPathComponent(url.lastPathComponent)
+
+                do {
+                    if FileManager.default.fileExists(atPath: destURL.path) {
+                        try FileManager.default.removeItem(at: destURL)
                     }
+                    try FileManager.default.copyItem(at: url, to: destURL)
+
+                    DispatchQueue.main.async {
+                        self?.loadMedia()
+                    }
+                } catch {
+                    print("Error copying file: \(error)")
                 }
             }
         }
     }
 }
 
-struct MediaItem {
+struct LocalMediaItem {
     let name: String
-    let type: MediaType
-    let thumbnail: UIImage?
+    let url: URL
+    let size: Int64
+    let modified: Date?
 }
 
 final class MediaItemCell: UICollectionViewCell {
     private let thumbnailView = UIImageView()
     private let titleLabel = UILabel()
+    private let detailLabel = UILabel()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -218,23 +314,41 @@ final class MediaItemCell: UICollectionViewCell {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(titleLabel)
 
+        detailLabel.font = .systemFont(ofSize: 11)
+        detailLabel.textColor = .secondaryLabel
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(detailLabel)
+
         NSLayoutConstraint.activate([
             thumbnailView.topAnchor.constraint(equalTo: contentView.topAnchor),
             thumbnailView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            thumbnailView.heightAnchor.constraint(equalTo: contentView.heightAnchor, multiplier: 0.7),
+            thumbnailView.heightAnchor.constraint(equalTo: contentView.heightAnchor, multiplier: 0.6),
 
-            titleLabel.topAnchor.constraint(equalTo: thumbnailView.bottomAnchor, constant: 8),
+            titleLabel.topAnchor.constraint(equalTo: thumbnailView.bottomAnchor, constant: 6),
             titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
             titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
-            titleLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8)
+
+            detailLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            detailLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
+            detailLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            detailLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8)
         ])
     }
 
-    func configure(with item: MediaItem) {
+    func configure(with item: LocalMediaItem, mediaType: MediaType) {
         titleLabel.text = item.name
-        thumbnailView.image = item.thumbnail ?? UIImage(systemName: item.type == .video ? "video.fill" : "music.note")
+        thumbnailView.image = UIImage(systemName: mediaType == .video ? "video.fill" : "music.note")
         thumbnailView.tintColor = .systemGray3
-        thumbnailView.contentMode = item.thumbnail == nil ? .center : .scaleAspectFill
+        thumbnailView.contentMode = .center
+
+        if let modified = item.modified {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .short
+            formatter.timeStyle = .none
+            detailLabel.text = formatter.string(from: modified)
+        } else {
+            detailLabel.text = nil
+        }
     }
 }
