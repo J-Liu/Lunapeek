@@ -4,6 +4,7 @@
 // under Section 7. See LICENSE for details.
 
 import UIKit
+import AVFoundation
 
 final class PlayerViewController: UIViewController {
     private let url: URL
@@ -142,12 +143,22 @@ final class PlayerViewController: UIViewController {
         Task {
             do {
                 try await playerEngine?.load(url: url)
+                activateAudioSession()
                 playerEngine?.play()
                 updatePlayButton()
             } catch {
                 print("Failed to load: \(error)")
                 showError(error)
             }
+        }
+    }
+
+    private func activateAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setActive(true)
+        } catch {
+            print("Failed to activate audio session: \(error)")
         }
     }
 

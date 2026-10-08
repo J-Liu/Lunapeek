@@ -42,10 +42,19 @@ final class RemoteFileBrowserViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    private var hasConnected = false
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        connectAndLoad()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if !hasConnected {
+            hasConnected = true
+            connectAndLoad()
+        }
     }
 
     deinit {

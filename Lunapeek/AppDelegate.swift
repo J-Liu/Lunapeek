@@ -18,7 +18,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .moviePlayback)
-            try session.setActive(true)
+            // Don't activate on launch - only when playback starts
         } catch {
             print("Failed to configure audio session: \(error)")
         }
