@@ -264,14 +264,7 @@ final class NetworkViewController: UIViewController {
 
         let alert = UIAlertController(title: title, message: server.address, preferredStyle: .alert)
 
-        if server.type == .sftp {
-            alert.addTextField { textField in
-                textField.placeholder = "Port"
-                textField.text = "\(server.port ?? 22)"
-                textField.keyboardType = .numberPad
-            }
-        }
-
+        // Username first (will get focus)
         alert.addTextField { textField in
             textField.placeholder = "Username"
             textField.autocapitalizationType = .none
@@ -280,6 +273,15 @@ final class NetworkViewController: UIViewController {
         alert.addTextField { textField in
             textField.placeholder = "Password"
             textField.isSecureTextEntry = true
+        }
+
+        // Port last for SFTP
+        if server.type == .sftp {
+            alert.addTextField { textField in
+                textField.placeholder = "Port"
+                textField.text = "\(server.port ?? 22)"
+                textField.keyboardType = .numberPad
+            }
         }
 
         alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self] _ in

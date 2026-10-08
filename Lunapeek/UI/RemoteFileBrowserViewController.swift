@@ -55,8 +55,8 @@ final class RemoteFileBrowserViewController: UIViewController {
 
     init(server: SavedServer) {
         self.server = server
-        // SFTP starts at home directory, others start at root
-        self.currentPath = server.type == .sftp ? "~" : "/"
+        // Start at root - Citadel SFTP doesn't reliably support "~" path expansion
+        self.currentPath = "/"
         super.init(nibName: nil, bundle: nil)
     }
 
