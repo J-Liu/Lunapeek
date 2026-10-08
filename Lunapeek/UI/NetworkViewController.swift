@@ -16,6 +16,8 @@ final class NetworkViewController: UIViewController {
     private var afpBrowser: NetServiceBrowser?
     private var sshBrowser: NetServiceBrowser?
     private var resolvingServices: [NetService] = []  // Keep services alive while resolving
+    private var debugLog: [String] = []
+    private var debugLabel: UILabel?
 
     private lazy var tableView: UITableView = {
         let tv = UITableView(frame: .zero, style: .insetGrouped)
@@ -58,14 +60,38 @@ final class NetworkViewController: UIViewController {
             action: #selector(refresh)
         )
 
+        // Debug label
+        let debugLabel = UILabel()
+        debugLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        debugLabel.textColor = .secondaryLabel
+        debugLabel.numberOfLines = 0
+        debugLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(debugLabel)
+        self.debugLabel = debugLabel
+
         view.addSubview(tableView)
 
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            debugLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
+            debugLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            debugLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+
+            tableView.topAnchor.constraint(equalTo: debugLabel.bottomAnchor, constant: 4),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+    }
+
+    private func log(_ message: String) {
+        print(message)  // Keep print for log function
+        debugLog.append(message)
+        if debugLog.count > 10 {
+            debugLog.removeFirst()
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.debugLabel?.text = self?.debugLog.joined(separator: "\n")
+        }
     }
 
     private func loadSavedServers() {
@@ -120,11 +146,11 @@ final class NetworkViewController: UIViewController {
     }
 
     private func discoverSSHServers() {
-        print("Starting SSH discovery...")
+        log("Starting SSH discovery...")
         sshBrowser = NetServiceBrowser()
         sshBrowser?.delegate = self
         sshBrowser?.searchForServices(ofType: "_ssh._tcp", inDomain: "local.")
-        print("SSH browser started")
+        log("SSH browser started")
     }
 
     @objc private func refresh() {
@@ -461,51 +487,47 @@ final class NetworkViewController: UIViewController {
 
 extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
-        print("Found service: \(service.name) type: \(service.type) domain: \(service.domain)")
+        log("Found: \(service.name) [\(service.type)]")
         service.delegate = self
         resolvingServices.append(service)  // Keep reference
         service.resolve(withTimeout: 10.0)
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
-        print("Service removed: \(service.name)")
+        log("Removed: \(service.name)")
         resolvingServices.removeAll { $0 === service }
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
-        print("Discovery error: \(errorDict)")
+        log("Error: \(errorDict)")
     }
 
     func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        print("Service resolution failed: \(sender.name) error: \(errorDict)")
+        log("Resolve failed: \(sender.name)")
         resolvingServices.removeAll { $0 === sender }
     }
 
     func netServiceDidResolveAddress(_ sender: NetService) {
-        print("Resolved service: \(sender.name) type: \(sender.type) addresses: \(sender.addresses?.count ?? 0)")
+        log("Resolved: \(sender.name)")
         resolvingServices.removeAll { $0 === sender }
 
         var type: ServerType?
 
-        print("Checking type: '\(sender.type)'")
         if sender.type.contains("smb") {
-            print("Matched SMB")
             type = .smb
         } else if sender.type.contains("sftp") || sender.type.contains("ssh") {
-            print("Matched SFTP/SSH")
             type = .sftp
         } else if sender.type.contains("afpovertcp") {
-            print("Matched AFP")
             type = .smb  // Treat AFP as file server
         }
 
         guard let type = type else {
-            print("Unknown service type: \(sender.type)")
+            log("Unknown: \(sender.type)")
             return
         }
 
         let address = resolveAddress(for: sender)
-        print("Resolved address: \(address) for \(sender.name)")
+        log("-> \(address) [\(type)]")
 
         let server = NetworkServer(
             name: sender.name,
