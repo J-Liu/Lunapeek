@@ -4,11 +4,11 @@
 // under Section 7. See LICENSE for details.
 
 import Foundation
+import SMBClient
 
-/// Placeholder SMB client implementation.
-/// Actual implementation requires libsmb2 (LGPL v2.1, must be dynamically linked).
-public final class SMBClient: SMBClientProtocol {
-    private var configuration: SMBConfiguration?
+public final class SMBClientWrapper: SMBClientProtocol {
+    private var client: SMBClient?
+    private var share: String?
     private var _isConnected = false
 
     public var isConnected: Bool {
@@ -18,25 +18,51 @@ public final class SMBClient: SMBClientProtocol {
     public init() {}
 
     public func connect(configuration: SMBConfiguration) async throws {
-        self.configuration = configuration
-
-        // TODO: Implement with libsmb2
-        // Note: libsmb2 is LGPL v2.1, must be dynamically linked for App Store compliance
-        _isConnected = true
+        do {
+            let client = SMBClient(host: configuration.host, port: configuration.port)
+            try await client.login(
+                username: configuration.username,
+                password: configuration.password,
+                domain: configuration.domain
+            )
+            try await client.connectShare(configuration.share)
+            self.client = client
+            self.share = configuration.share
+            _isConnected = true
+        } catch {
+            throw SMBError.connectionFailed(error)
+        }
     }
 
     public func disconnect() async {
+        if let client = client {
+            try? await client.disconnectShare()
+            try? await client.logoff()
+        }
+        client = nil
+        share = nil
         _isConnected = false
-        configuration = nil
     }
 
     public func listDirectory(path: String) async throws -> [SMBFile] {
-        guard _isConnected else {
+        guard let client = client else {
             throw SMBError.notConnected
         }
 
-        // TODO: Implement with libsmb2 smb2_opendir / smb2_readdir
-        return []
+        do {
+            let files = try await client.listDirectory(path: path)
+            return files.map { file in
+                SMBFile(
+                    name: file.name,
+                    path: path.isEmpty || path == "/" ? "/\(file.name)" : "\(path)/\(file.name)",
+                    isDirectory: file.isDirectory,
+                    size: Int64(file.size),
+                    modificationDate: file.lastWriteTime
+                )
+            }
+        } catch {
+            throw SMBError.fileNotFound
+        }
     }
 
     public func downloadFile(
@@ -44,14 +70,22 @@ public final class SMBClient: SMBClientProtocol {
         localURL: URL,
         progress: @escaping (SMBProgress) -> Void
     ) async throws {
-        guard _isConnected else {
+        guard let client = client else {
             throw SMBError.notConnected
         }
 
-        // TODO: Implement with libsmb2 smb2_open / smb2_read
+        do {
+            try await client.download(path: remotePath, localPath: localURL, overwrite: true) { progressValue in
+                // SMBClient provides progress as Double (0.0 - 1.0)
+                // We need to get file size for actual bytes
+                progress(SMBProgress(bytesTransferred: 0, totalBytes: 0))
+            }
+        } catch {
+            throw SMBError.downloadFailed(error)
+        }
     }
 
     public func cancelDownload() async {
-        // TODO: Implement download cancellation
+        // SMBClient library doesn't support cancellation directly
     }
 }

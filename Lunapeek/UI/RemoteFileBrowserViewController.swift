@@ -12,6 +12,9 @@ final class RemoteFileBrowserViewController: UIViewController {
     private var selectedItems: Set<IndexPath> = []
     private var isSelecting = false
 
+    private var smbClient: SMBClientWrapper?
+    private var sftpClient: SFTPClientWrapper?
+
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
@@ -42,7 +45,14 @@ final class RemoteFileBrowserViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        loadDirectory()
+        connectAndLoad()
+    }
+
+    deinit {
+        Task {
+            await smbClient?.disconnect()
+            await sftpClient?.disconnect()
+        }
     }
 
     private func setupUI() {
@@ -80,15 +90,95 @@ final class RemoteFileBrowserViewController: UIViewController {
         updateToolbar()
     }
 
-    private func loadDirectory() {
-        // TODO: Load from actual server
-        items = [
-            RemoteFileItem(name: "Documents", isDirectory: true, size: nil, modified: nil),
-            RemoteFileItem(name: "Downloads", isDirectory: true, size: nil, modified: nil),
-            RemoteFileItem(name: "video.mp4", isDirectory: false, size: 1024 * 1024 * 500, modified: Date()),
-            RemoteFileItem(name: "audio.mp3", isDirectory: false, size: 1024 * 1024 * 5, modified: Date())
-        ]
-        collectionView.reloadData()
+    private func connectAndLoad() {
+        Task {
+            do {
+                switch server.type {
+                case .smb:
+                    let client = SMBClientWrapper()
+                    let config = SMBConfiguration(
+                        host: server.address,
+                        port: server.port ?? 445,
+                        share: server.name,
+                        username: server.username,
+                        password: server.password
+                    )
+                    try await client.connect(configuration: config)
+                    smbClient = client
+                case .sftp:
+                    let client = SFTPClientWrapper()
+                    let config = SFTPConfiguration(
+                        host: server.address,
+                        port: server.port ?? 22,
+                        username: server.username,
+                        password: server.password
+                    )
+                    try await client.connect(configuration: config)
+                    sftpClient = client
+                case .webdav:
+                    // TODO: Implement WebDAV
+                    break
+                }
+                await loadDirectory()
+            } catch {
+                await MainActor.run {
+                    let alert = UIAlertController(
+                        title: "Connection Failed",
+                        message: error.localizedDescription,
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                        self.navigationController?.popViewController(animated: true)
+                    })
+                    present(alert, animated: true)
+                }
+            }
+        }
+    }
+
+    private func loadDirectory() async {
+        do {
+            let files: [RemoteFileItem]
+
+            if let client = smbClient {
+                let smbFiles = try await client.listDirectory(path: currentPath)
+                files = smbFiles.map { file in
+                    RemoteFileItem(
+                        name: file.name,
+                        isDirectory: file.isDirectory,
+                        size: file.size,
+                        modified: file.modificationDate
+                    )
+                }
+            } else if let client = sftpClient {
+                let sftpFiles = try await client.listDirectory(path: currentPath)
+                files = sftpFiles.map { file in
+                    RemoteFileItem(
+                        name: file.name,
+                        isDirectory: file.isDirectory,
+                        size: file.size,
+                        modified: file.modificationDate
+                    )
+                }
+            } else {
+                files = []
+            }
+
+            await MainActor.run {
+                self.items = files
+                self.collectionView.reloadData()
+            }
+        } catch {
+            await MainActor.run {
+                let alert = UIAlertController(
+                    title: "Error",
+                    message: error.localizedDescription,
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+            }
+        }
     }
 
     private func updateToolbar() {
@@ -106,8 +196,49 @@ final class RemoteFileBrowserViewController: UIViewController {
     @objc private func downloadSelected() {
         guard !selectedItems.isEmpty else { return }
         let files = selectedItems.map { items[$0.item] }
-        print("Download: \(files.map { $0.name })")
-        // TODO: Implement download
+
+        Task {
+            for file in files {
+                guard !file.isDirectory else { continue }
+
+                do {
+                    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    let localURL = documentsPath.appendingPathComponent(file.name)
+                    let remotePath = currentPath == "/" ? "/\(file.name)" : "\(currentPath)/\(file.name)"
+
+                    if let client = smbClient {
+                        try await client.downloadFile(remotePath: remotePath, localURL: localURL) { _ in }
+                    } else if let client = sftpClient {
+                        try await client.downloadFile(remotePath: remotePath, localURL: localURL) { _ in }
+                    }
+                } catch {
+                    await MainActor.run {
+                        let alert = UIAlertController(
+                            title: "Download Failed",
+                            message: "Failed to download \(file.name): \(error.localizedDescription)",
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(alert, animated: true)
+                    }
+                    return
+                }
+            }
+
+            await MainActor.run {
+                self.selectedItems.removeAll()
+                self.collectionView.reloadData()
+                self.updateToolbar()
+
+                let alert = UIAlertController(
+                    title: "Download Complete",
+                    message: "Downloaded \(files.count) file(s)",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                self.present(alert, animated: true)
+            }
+        }
     }
 
     @objc private func deleteSelected() {
@@ -161,7 +292,10 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
             if item.isDirectory {
                 // Navigate into directory
                 currentPath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
-                loadDirectory()
+                title = item.name
+                Task {
+                    await loadDirectory()
+                }
             } else {
                 // Open file
                 print("Open: \(item.name)")

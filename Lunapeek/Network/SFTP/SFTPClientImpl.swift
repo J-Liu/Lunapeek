@@ -4,11 +4,11 @@
 // under Section 7. See LICENSE for details.
 
 import Foundation
+import Citadel
+import NIO
 
-/// Placeholder SFTP client implementation.
-/// Actual implementation requires libssh or similar library.
-public final class SFTPClient: SFTPClientProtocol {
-    private var configuration: SFTPConfiguration?
+public final class SFTPClientWrapper: SFTPClientProtocol {
+    private var sshClient: SSHClient?
     private var _isConnected = false
 
     public var isConnected: Bool {
@@ -18,25 +18,67 @@ public final class SFTPClient: SFTPClientProtocol {
     public init() {}
 
     public func connect(configuration: SFTPConfiguration) async throws {
-        self.configuration = configuration
+        do {
+            let authMethod: SSHAuthenticationMethod
+            if let password = configuration.password {
+                authMethod = .passwordBased(username: configuration.username, password: password)
+            } else {
+                throw SFTPError.authenticationFailed
+            }
 
-        // TODO: Implement with libssh or mft library
-        // For now, simulate connection
-        _isConnected = true
+            let client = try await SSHClient.connect(
+                host: configuration.host,
+                port: configuration.port,
+                authenticationMethod: authMethod,
+                hostKeyValidator: .acceptAnything(),
+                reconnect: .never
+            )
+            self.sshClient = client
+            _isConnected = true
+        } catch {
+            throw SFTPError.connectionFailed(error)
+        }
     }
 
     public func disconnect() async {
+        if let client = sshClient {
+            try? await client.close()
+        }
+        sshClient = nil
         _isConnected = false
-        configuration = nil
     }
 
     public func listDirectory(path: String) async throws -> [SFTPFile] {
-        guard _isConnected else {
+        guard let sshClient = sshClient else {
             throw SFTPError.notConnected
         }
 
-        // TODO: Implement with libssh sftp_ls
-        return []
+        do {
+            let names = try await sshClient.withSFTP { sftp in
+                try await sftp.listDirectory(atPath: path)
+            }
+            // listDirectory returns [SFTPMessage.Name], each Name contains components
+            // We need to flatten the components
+            var files: [SFTPFile] = []
+            for name in names {
+                for component in name.components {
+                    // Check if directory using S_IFDIR (0o40000) in permissions
+                    let isDirectory = (component.attributes.permissions ?? 0) & 0o170000 == 0o040000
+                    let file = SFTPFile(
+                        name: component.filename,
+                        path: path.isEmpty || path == "/" ? "/\(component.filename)" : "\(path)/\(component.filename)",
+                        isDirectory: isDirectory,
+                        size: Int64(component.attributes.size ?? 0),
+                        modificationDate: component.attributes.accessModificationTime?.modificationTime,
+                        permissions: Int(component.attributes.permissions ?? 0)
+                    )
+                    files.append(file)
+                }
+            }
+            return files
+        } catch {
+            throw SFTPError.fileNotFound
+        }
     }
 
     public func downloadFile(
@@ -44,14 +86,27 @@ public final class SFTPClient: SFTPClientProtocol {
         localURL: URL,
         progress: @escaping (SFTPProgress) -> Void
     ) async throws {
-        guard _isConnected else {
+        guard let sshClient = sshClient else {
             throw SFTPError.notConnected
         }
 
-        // TODO: Implement with libssh sftp_read
+        do {
+            var buffer = try await sshClient.withSFTP { sftp in
+                try await sftp.withFile(filePath: remotePath, flags: .read) { file in
+                    try await file.readAll()
+                }
+            }
+            // Convert ByteBuffer to Data
+            var data = Data()
+            data.append(contentsOf: buffer.readableBytesView)
+            try data.write(to: localURL)
+            progress(SFTPProgress(bytesTransferred: Int64(data.count), totalBytes: Int64(data.count)))
+        } catch {
+            throw SFTPError.downloadFailed(error)
+        }
     }
 
     public func cancelDownload() async {
-        // TODO: Implement download cancellation
+        // Citadel doesn't support direct cancellation
     }
 }
