@@ -14,15 +14,14 @@ final class RemoteFileBrowserViewController: UIViewController {
 
     private var smbClient: SMBClientWrapper?
     private var sftpClient: SFTPClientWrapper?
+    private weak var currentMenuVC: UIViewController?
 
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
-        layout.minimumInteritemSpacing = 12
-        layout.minimumLineSpacing = 12
-        layout.sectionInset = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
-        let itemWidth = (UIScreen.main.bounds.width - 44) / 2
-        layout.itemSize = CGSize(width: itemWidth, height: itemWidth * 0.6)
+        layout.minimumInteritemSpacing = 8
+        layout.minimumLineSpacing = 8
+        layout.sectionInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
 
         let cv = UICollectionView(frame: .zero, collectionViewLayout: layout)
         cv.backgroundColor = .systemBackground
@@ -32,6 +31,25 @@ final class RemoteFileBrowserViewController: UIViewController {
         cv.translatesAutoresizingMaskIntoConstraints = false
         return cv
     }()
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateCollectionViewLayout()
+    }
+
+    private func updateCollectionViewLayout() {
+        guard let layout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout else { return }
+
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let availableWidth = collectionView.bounds.width - 16 // minus insets
+
+        let columns: CGFloat = isPad ? 5 : 3
+        let spacing = layout.minimumInteritemSpacing * (columns - 1)
+        let itemWidth = floor((availableWidth - spacing) / columns)
+        let itemHeight = itemWidth * 1.4
+
+        layout.itemSize = CGSize(width: itemWidth, height: itemHeight)
+    }
 
     init(server: SavedServer) {
         self.server = server
@@ -352,6 +370,7 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
         let item = items[indexPath.item]
         let isSelected = selectedItems.contains(indexPath)
         cell.configure(with: item, isSelected: isSelected)
+        cell.delegate = self
         return cell
     }
 
@@ -383,18 +402,391 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
     }
 }
 
-struct RemoteFileItem {
+// MARK: - FileItemCellDelegate
+
+extension RemoteFileBrowserViewController: FileItemCellDelegate {
+    func fileItemCellDidTapMenu(_ cell: FileItemCell) {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return }
+        let item = items[indexPath.item]
+        showItemMenu(for: item, at: indexPath)
+    }
+
+    private func showItemMenu(for item: RemoteFileItem, at indexPath: IndexPath) {
+        let menuVC = UIViewController()
+        menuVC.modalPresentationStyle = .pageSheet
+        if let sheet = menuVC.sheetPresentationController {
+            sheet.detents = [.medium()]
+            sheet.prefersGrabberVisible = true
+        }
+
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.spacing = 0
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        menuVC.view.addSubview(stackView)
+
+        // Header view
+        let headerView = createMenuHeader(for: item)
+        stackView.addArrangedSubview(headerView)
+
+        // Divider
+        let divider = UIView()
+        divider.backgroundColor = .separator
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        stackView.addArrangedSubview(divider)
+        NSLayoutConstraint.activate([
+            divider.heightAnchor.constraint(equalToConstant: 0.5)
+        ])
+
+        // Actions
+        let actionsStack = UIStackView()
+        actionsStack.axis = .vertical
+        actionsStack.spacing = 0
+        actionsStack.translatesAutoresizingMaskIntoConstraints = false
+        stackView.addArrangedSubview(actionsStack)
+
+        // Share action
+        let shareAction = createMenuAction(title: "Share", icon: "square.and.arrow.up") { [weak self] in
+            self?.shareItem(item)
+        }
+        actionsStack.addArrangedSubview(shareAction)
+
+        // Divider
+        let divider1 = createMenuDivider()
+        actionsStack.addArrangedSubview(divider1)
+
+        // Download
+        let downloadAction = createMenuAction(title: "Download", icon: "arrow.down.circle") { [weak self] in
+            self?.downloadItem(item)
+        }
+        actionsStack.addArrangedSubview(downloadAction)
+
+        // Rename
+        let renameAction = createMenuAction(title: "Rename", icon: "pencil") { [weak self] in
+            self?.renameItem(item)
+        }
+        actionsStack.addArrangedSubview(renameAction)
+
+        // Move to
+        let moveAction = createMenuAction(title: "Move to", icon: "folder.badge.arrow.right") { [weak self] in
+            self?.moveItem(item)
+        }
+        actionsStack.addArrangedSubview(moveAction)
+
+        // Copy to
+        let copyAction = createMenuAction(title: "Copy to", icon: "doc.on.doc") { [weak self] in
+            self?.copyItem(item)
+        }
+        actionsStack.addArrangedSubview(copyAction)
+
+        // Duplicate
+        let duplicateAction = createMenuAction(title: "Duplicate", icon: "plus.square.on.square") { [weak self] in
+            self?.duplicateItem(item)
+        }
+        actionsStack.addArrangedSubview(duplicateAction)
+
+        // Divider
+        let divider2 = createMenuDivider()
+        actionsStack.addArrangedSubview(divider2)
+
+        // Delete (destructive)
+        let deleteAction = createMenuAction(title: "Delete", icon: "trash", isDestructive: true) { [weak self] in
+            self?.confirmDeleteItem(item, at: indexPath)
+        }
+        actionsStack.addArrangedSubview(deleteAction)
+
+        // Divider
+        let divider3 = createMenuDivider()
+        actionsStack.addArrangedSubview(divider3)
+
+        // Show Info
+        let infoAction = createMenuAction(title: "Show Info", icon: "info.circle") { [weak self] in
+            self?.showInfo(for: item)
+        }
+        actionsStack.addArrangedSubview(infoAction)
+
+        // Cancel button
+        let cancelButton = UIButton(type: .system)
+        cancelButton.setTitle("Cancel", for: .normal)
+        cancelButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        cancelButton.backgroundColor = .secondarySystemBackground
+        cancelButton.layer.cornerRadius = 12
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.addTarget(self, action: #selector(dismissMenu), for: .touchUpInside)
+
+        stackView.addArrangedSubview(cancelButton)
+        NSLayoutConstraint.activate([
+            cancelButton.heightAnchor.constraint(equalToConstant: 56)
+        ])
+
+        NSLayoutConstraint.activate([
+            stackView.topAnchor.constraint(equalTo: menuVC.view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            stackView.leadingAnchor.constraint(equalTo: menuVC.view.leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: menuVC.view.trailingAnchor, constant: -16),
+            stackView.bottomAnchor.constraint(lessThanOrEqualTo: menuVC.view.safeAreaLayoutGuide.bottomAnchor, constant: -12)
+        ])
+
+        present(menuVC, animated: true)
+        currentMenuVC = menuVC
+    }
+
+    @objc private func dismissMenu() {
+        currentMenuVC?.dismiss(animated: true)
+    }
+
+    private func createMenuHeader(for item: RemoteFileItem) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .secondarySystemBackground
+        view.layer.cornerRadius = 12
+
+        let iconView = UIImageView()
+        let config = UIImage.SymbolConfiguration(pointSize: 32, weight: .regular)
+        iconView.preferredSymbolConfiguration = config
+        iconView.contentMode = .center
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        if item.isDirectory {
+            iconView.image = UIImage(systemName: "folder.fill")
+            iconView.tintColor = .systemBlue
+        } else {
+            let ext = (item.name as NSString).pathExtension.lowercased()
+            switch ext {
+            case "mp4", "mov", "avi", "mkv", "webm", "m4v", "flv":
+                iconView.image = UIImage(systemName: "video.fill")
+                iconView.tintColor = .systemPurple
+            case "mp3", "wav", "flac", "aac", "m4a", "ogg", "wma":
+                iconView.image = UIImage(systemName: "music.note")
+                iconView.tintColor = .systemPink
+            case "jpg", "jpeg", "png", "gif", "heic":
+                iconView.image = UIImage(systemName: "photo.fill")
+                iconView.tintColor = .systemGreen
+            default:
+                iconView.image = UIImage(systemName: "doc.fill")
+                iconView.tintColor = .systemGray
+            }
+        }
+        view.addSubview(iconView)
+
+        let nameLabel = UILabel()
+        nameLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        nameLabel.text = item.name
+        nameLabel.numberOfLines = 2
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(nameLabel)
+
+        let detailLabel = UILabel()
+        detailLabel.font = .systemFont(ofSize: 13)
+        detailLabel.textColor = .secondaryLabel
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        var detailText = ""
+        if !item.isDirectory, let size = item.size {
+            detailText = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        }
+        if let modified = item.modified {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            if !detailText.isEmpty { detailText += " • " }
+            detailText += formatter.string(from: modified)
+        }
+        detailLabel.text = detailText.isEmpty ? nil : detailText
+        view.addSubview(detailLabel)
+
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            iconView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 44),
+            iconView.heightAnchor.constraint(equalToConstant: 44),
+
+            nameLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 12),
+            nameLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+
+            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
+            detailLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            detailLabel.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12)
+        ])
+
+        return view
+    }
+
+    private func createMenuAction(title: String, icon: String, isDestructive: Bool = false, action: @escaping () -> Void) -> UIButton {
+        let button = UIButton(type: .system)
+        var config = UIButton.Configuration.plain()
+        config.title = title
+        config.image = UIImage(systemName: icon)
+        config.imagePadding = 12
+        config.imagePlacement = .leading
+        config.titleTextAttributesTransformer = .init { attributes in
+            var newAttributes = attributes
+            newAttributes.font = .systemFont(ofSize: 17)
+            return newAttributes
+        }
+        button.configuration = config
+        button.contentHorizontalAlignment = .leading
+        button.tintColor = isDestructive ? .systemRed : .label
+        button.backgroundColor = .secondarySystemBackground
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        let actionWrapper = { [weak self] in
+            self?.dismissMenu()
+            action()
+        }
+        button.addAction(UIAction { _ in actionWrapper() }, for: .touchUpInside)
+
+        NSLayoutConstraint.activate([
+            button.heightAnchor.constraint(equalToConstant: 48)
+        ])
+
+        return button
+    }
+
+    private func createMenuDivider() -> UIView {
+        let view = UIView()
+        view.backgroundColor = .separator
+        view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            view.heightAnchor.constraint(equalToConstant: 0.5)
+        ])
+        return view
+    }
+
+    // MARK: - Menu Actions
+
+    private func shareItem(_ item: RemoteFileItem) {
+        // Download file first, then share
+        let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let localURL = documentsPath.appendingPathComponent(item.name)
+
+        Task { [weak self] in
+            do {
+                if let client = self?.smbClient {
+                    try await client.downloadFile(remotePath: remotePath, localURL: localURL) { _ in }
+                } else if let client = self?.sftpClient {
+                    try await client.downloadFile(remotePath: remotePath, localURL: localURL) { _ in }
+                }
+
+                await MainActor.run {
+                    let activityVC = UIActivityViewController(activityItems: [localURL], applicationActivities: nil)
+                    if let popover = activityVC.popoverPresentationController {
+                        popover.sourceView = self?.view
+                        popover.sourceRect = CGRect(x: (self?.view.bounds.midX ?? 0), y: (self?.view.bounds.midY ?? 0), width: 0, height: 0)
+                    }
+                    self?.present(activityVC, animated: true)
+                }
+            } catch {
+                await MainActor.run {
+                    let alert = UIAlertController(title: "Share Failed", message: error.localizedDescription, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(alert, animated: true)
+                }
+            }
+        }
+    }
+
+    private func downloadItem(_ item: RemoteFileItem) {
+        guard !item.isDirectory else { return }
+        selectedItems.removeAll()
+        selectedItems.insert(IndexPath(item: items.firstIndex(of: item) ?? 0, section: 0))
+        downloadSelected()
+    }
+
+    private func renameItem(_ item: RemoteFileItem) {
+        let alert = UIAlertController(title: "Rename", message: nil, preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.text = item.name
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self] _ in
+            guard let newName = alert.textFields?.first?.text, !newName.isEmpty else { return }
+            self?.performRename(item: item, newName: newName)
+        })
+        present(alert, animated: true)
+    }
+
+    private func performRename(item: RemoteFileItem, newName: String) {
+        // TODO: Implement rename
+        let alert = UIAlertController(title: "Not Implemented", message: "Rename feature coming soon", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func moveItem(_ item: RemoteFileItem) {
+        // TODO: Implement move
+        let alert = UIAlertController(title: "Not Implemented", message: "Move feature coming soon", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func copyItem(_ item: RemoteFileItem) {
+        // TODO: Implement copy
+        let alert = UIAlertController(title: "Not Implemented", message: "Copy feature coming soon", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func duplicateItem(_ item: RemoteFileItem) {
+        // TODO: Implement duplicate
+        let alert = UIAlertController(title: "Not Implemented", message: "Duplicate feature coming soon", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func confirmDeleteItem(_ item: RemoteFileItem, at indexPath: IndexPath) {
+        let alert = UIAlertController(
+            title: "Delete \(item.isDirectory ? "Folder" : "File")?",
+            message: item.name,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            self?.performDelete(files: [item])
+        })
+        present(alert, animated: true)
+    }
+
+    private func showInfo(for item: RemoteFileItem) {
+        var info = "Name: \(item.name)\n"
+        info += "Type: \(item.isDirectory ? "Folder" : "File")\n"
+        if let size = item.size {
+            info += "Size: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))\n"
+        }
+        if let modified = item.modified {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .full
+            formatter.timeStyle = .long
+            info += "Modified: \(formatter.string(from: modified))\n"
+        }
+
+        let alert = UIAlertController(title: "Info", message: info, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+}
+
+struct RemoteFileItem: Equatable {
     let name: String
     let isDirectory: Bool
     let size: Int64?
     let modified: Date?
 }
 
+// MARK: - FileItemCell
+
+protocol FileItemCellDelegate: AnyObject {
+    func fileItemCellDidTapMenu(_ cell: FileItemCell)
+}
+
 final class FileItemCell: UICollectionViewCell {
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
-    private let detailLabel = UILabel()
-    private let checkmark = UIImageView()
+    private let menuButton = UIButton()
+    private let selectionOverlay = UIView()
+
+    weak var delegate: FileItemCellDelegate?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -407,68 +799,81 @@ final class FileItemCell: UICollectionViewCell {
 
     private func setupUI() {
         contentView.backgroundColor = .secondarySystemBackground
-        contentView.layer.cornerRadius = 12
+        contentView.layer.cornerRadius = 8
         contentView.clipsToBounds = true
 
+        // Icon - centered at top
         iconView.tintColor = .systemBlue
         iconView.contentMode = .center
         iconView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(iconView)
 
-        titleLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        // Title - centered below icon
+        titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        titleLabel.textAlignment = .center
         titleLabel.numberOfLines = 2
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(titleLabel)
 
-        detailLabel.font = .systemFont(ofSize: 11)
-        detailLabel.textColor = .secondaryLabel
-        detailLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(detailLabel)
+        // Menu button - centered below title
+        menuButton.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+        menuButton.tintColor = .secondaryLabel
+        menuButton.addTarget(self, action: #selector(menuTapped), for: .touchUpInside)
+        menuButton.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(menuButton)
 
-        checkmark.image = UIImage(systemName: "checkmark.circle.fill")
-        checkmark.tintColor = .systemBlue
-        checkmark.isHidden = true
-        checkmark.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(checkmark)
+        // Selection overlay
+        selectionOverlay.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.2)
+        selectionOverlay.layer.borderColor = UIColor.systemBlue.cgColor
+        selectionOverlay.layer.borderWidth = 2
+        selectionOverlay.layer.cornerRadius = 8
+        selectionOverlay.isHidden = true
+        selectionOverlay.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(selectionOverlay)
 
         NSLayoutConstraint.activate([
-            iconView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            iconView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            iconView.heightAnchor.constraint(equalTo: contentView.heightAnchor, multiplier: 0.55),
+            iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            iconView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 44),
+            iconView.heightAnchor.constraint(equalToConstant: 44),
 
-            titleLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 6),
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
-            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            titleLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 4),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
 
-            detailLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
-            detailLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
-            detailLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            menuButton.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            menuButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            menuButton.widthAnchor.constraint(equalToConstant: 44),
+            menuButton.heightAnchor.constraint(equalToConstant: 28),
+            menuButton.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -4),
 
-            checkmark.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
-            checkmark.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
-            checkmark.widthAnchor.constraint(equalToConstant: 24),
-            checkmark.heightAnchor.constraint(equalToConstant: 24)
+            selectionOverlay.topAnchor.constraint(equalTo: contentView.topAnchor),
+            selectionOverlay.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            selectionOverlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            selectionOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
+    }
+
+    @objc private func menuTapped() {
+        delegate?.fileItemCellDidTapMenu(self)
     }
 
     func configure(with item: RemoteFileItem, isSelected: Bool) {
         titleLabel.text = item.name
 
-        let largeConfig = UIImage.SymbolConfiguration(pointSize: 48, weight: .regular)
-        iconView.preferredSymbolConfiguration = largeConfig
+        let config = UIImage.SymbolConfiguration(pointSize: 36, weight: .regular)
+        iconView.preferredSymbolConfiguration = config
 
         if item.isDirectory {
             iconView.image = UIImage(systemName: "folder.fill")
             iconView.tintColor = .systemBlue
-            detailLabel.text = nil
         } else {
             let ext = (item.name as NSString).pathExtension.lowercased()
             switch ext {
-            case "mp4", "mov", "avi", "mkv", "webm":
+            case "mp4", "mov", "avi", "mkv", "webm", "m4v", "flv":
                 iconView.image = UIImage(systemName: "video.fill")
                 iconView.tintColor = .systemPurple
-            case "mp3", "wav", "flac", "aac", "m4a":
+            case "mp3", "wav", "flac", "aac", "m4a", "ogg", "wma":
                 iconView.image = UIImage(systemName: "music.note")
                 iconView.tintColor = .systemPink
             case "jpg", "jpeg", "png", "gif", "heic":
@@ -478,14 +883,8 @@ final class FileItemCell: UICollectionViewCell {
                 iconView.image = UIImage(systemName: "doc.fill")
                 iconView.tintColor = .systemGray
             }
-
-            if let size = item.size {
-                detailLabel.text = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-            } else {
-                detailLabel.text = nil
-            }
         }
 
-        checkmark.isHidden = !isSelected
+        selectionOverlay.isHidden = !isSelected
     }
 }
