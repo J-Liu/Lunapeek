@@ -89,6 +89,7 @@ public protocol SMBClientProtocol {
     func connect(configuration: SMBConfiguration) async throws
     func disconnect() async
     func listDirectory(path: String) async throws -> [SMBFile]
+    func deleteFile(path: String) async throws
     func downloadFile(
         remotePath: String,
         localURL: URL,

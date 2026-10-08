@@ -278,13 +278,29 @@ final class NetworkViewController: UIViewController {
             guard let self else { return }
 
             if type == .smb {
-                // For SMB: login first, then discover shares
+                // If share is already known (from saved server), connect directly
+                if let share = share, !share.isEmpty {
+                    await MainActor.run {
+                        loading.dismiss(animated: true) { [weak self] in
+                            self?.saveAndBrowse(
+                                host: host,
+                                share: share,
+                                type: type,
+                                username: username,
+                                password: password,
+                                port: port
+                            )
+                        }
+                    }
+                    return
+                }
+
+                // Otherwise, discover shares
                 do {
                     let client = SMBClientWrapper()
                     try await client.login(host: host, port: port ?? 445, username: username, password: password, domain: nil)
 
                     let shares = try await client.listShares()
-                    // Filter out IPC$ and print shares
                     let diskShares = shares.filter { !$0.name.hasSuffix("$") }
 
                     await MainActor.run {
@@ -299,7 +315,6 @@ final class NetworkViewController: UIViewController {
                                 alert.addAction(UIAlertAction(title: "OK", style: .default))
                                 present(alert, animated: true)
                             } else if diskShares.count == 1 {
-                                // Auto-select single share
                                 self.saveAndBrowse(
                                     host: host,
                                     share: diskShares[0].name,
@@ -309,7 +324,6 @@ final class NetworkViewController: UIViewController {
                                     port: port
                                 )
                             } else {
-                                // Show share picker
                                 self.showSharePicker(
                                     host: host,
                                     shares: diskShares,

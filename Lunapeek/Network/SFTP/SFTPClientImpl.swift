@@ -91,7 +91,7 @@ public final class SFTPClientWrapper: SFTPClientProtocol {
         }
 
         do {
-            var buffer = try await sshClient.withSFTP { sftp in
+            let buffer = try await sshClient.withSFTP { sftp in
                 try await sftp.withFile(filePath: remotePath, flags: .read) { file in
                     try await file.readAll()
                 }
@@ -108,5 +108,19 @@ public final class SFTPClientWrapper: SFTPClientProtocol {
 
     public func cancelDownload() async {
         // Citadel doesn't support direct cancellation
+    }
+
+    public func deleteFile(path: String) async throws {
+        guard let sshClient = sshClient else {
+            throw SFTPError.notConnected
+        }
+
+        do {
+            try await sshClient.withSFTP { sftp in
+                try await sftp.remove(at: path)
+            }
+        } catch {
+            throw SFTPError.fileNotFound
+        }
     }
 }

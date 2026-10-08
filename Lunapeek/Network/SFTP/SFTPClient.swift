@@ -80,6 +80,7 @@ public protocol SFTPClientProtocol {
     func connect(configuration: SFTPConfiguration) async throws
     func disconnect() async
     func listDirectory(path: String) async throws -> [SFTPFile]
+    func deleteFile(path: String) async throws
     func downloadFile(
         remotePath: String,
         localURL: URL,

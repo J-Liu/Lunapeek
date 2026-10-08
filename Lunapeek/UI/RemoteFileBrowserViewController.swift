@@ -285,14 +285,60 @@ final class RemoteFileBrowserViewController: UIViewController {
         )
 
         alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            // TODO: Implement delete
-            self?.selectedItems.removeAll()
-            self?.collectionView.reloadData()
-            self?.updateToolbar()
+            self?.performDelete(files: files)
         })
 
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
+    }
+
+    private func performDelete(files: [RemoteFileItem]) {
+        Task { [weak self] in
+            guard let self else { return }
+            var deletedCount = 0
+            var failedFiles: [String] = []
+
+            for file in files {
+                let remotePath = currentPath == "/" ? "/\(file.name)" : "\(currentPath)/\(file.name)"
+
+                do {
+                    if let client = smbClient {
+                        try await client.deleteFile(path: remotePath)
+                        deletedCount += 1
+                    } else if let client = sftpClient {
+                        try await client.deleteFile(path: remotePath)
+                        deletedCount += 1
+                    }
+                } catch {
+                    failedFiles.append(file.name)
+                }
+            }
+
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                selectedItems.removeAll()
+
+                if failedFiles.isEmpty {
+                    // Refresh the directory listing
+                    Task { [weak self] in
+                        await self?.loadDirectory()
+                    }
+                } else {
+                    let alert = UIAlertController(
+                        title: "Delete Completed",
+                        message: "Deleted \(deletedCount) item(s). Failed: \(failedFiles.joined(separator: ", "))",
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                        Task {
+                            await self?.loadDirectory()
+                        }
+                    })
+                    present(alert, animated: true)
+                }
+                updateToolbar()
+            }
+        }
     }
 }
 
