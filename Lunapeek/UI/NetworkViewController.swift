@@ -120,9 +120,11 @@ final class NetworkViewController: UIViewController {
     }
 
     private func discoverSSHServers() {
+        print("Starting SSH discovery...")
         sshBrowser = NetServiceBrowser()
         sshBrowser?.delegate = self
         sshBrowser?.searchForServices(ofType: "_ssh._tcp", inDomain: "local.")
+        print("SSH browser started")
     }
 
     @objc private func refresh() {
@@ -459,7 +461,7 @@ final class NetworkViewController: UIViewController {
 
 extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
-        print("Found service: \(service.name) type: \(service.type)")
+        print("Found service: \(service.name) type: \(service.type) domain: \(service.domain)")
         service.delegate = self
         resolvingServices.append(service)  // Keep reference
         service.resolve(withTimeout: 10.0)
@@ -480,16 +482,20 @@ extension NetworkViewController: NetServiceBrowserDelegate, NetServiceDelegate {
     }
 
     func netServiceDidResolveAddress(_ sender: NetService) {
-        print("Resolved service: \(sender.name) addresses: \(sender.addresses?.count ?? 0)")
+        print("Resolved service: \(sender.name) type: \(sender.type) addresses: \(sender.addresses?.count ?? 0)")
         resolvingServices.removeAll { $0 === sender }
 
         var type: ServerType?
 
+        print("Checking type: '\(sender.type)'")
         if sender.type.contains("smb") {
+            print("Matched SMB")
             type = .smb
         } else if sender.type.contains("sftp") || sender.type.contains("ssh") {
+            print("Matched SFTP/SSH")
             type = .sftp
         } else if sender.type.contains("afpovertcp") {
+            print("Matched AFP")
             type = .smb  // Treat AFP as file server
         }
 
