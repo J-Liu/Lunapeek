@@ -307,6 +307,13 @@ final class PlayerViewController: UIViewController {
 
     // MARK: - Brightness & Volume
 
+    private func dismissSliderPopups() {
+        brightnessSliderView?.removeFromSuperview()
+        brightnessSliderView = nil
+        volumeSliderView?.removeFromSuperview()
+        volumeSliderView = nil
+    }
+
     @objc private func brightnessTapped() {
         resetControlsHideTimer()
         if brightnessSliderView != nil {
@@ -315,9 +322,12 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        let sliderView = createVerticalSlider(value: Float(UIScreen.main.brightness), min: 0, max: 1) { [weak self] value in
+        dismissSliderPopups()
+
+        let sliderView = createVerticalSlider(type: .brightness, value: Float(UIScreen.main.brightness), min: 0, max: 1) { [weak self] value in
             UIScreen.main.brightness = CGFloat(value)
             self?.updateBrightnessIcon(value: value)
+            self?.showGestureIndicator(type: .brightness, value: CGFloat(value))
         }
         sliderView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(sliderView)
@@ -329,10 +339,6 @@ final class PlayerViewController: UIViewController {
             sliderView.widthAnchor.constraint(equalToConstant: 44),
             sliderView.heightAnchor.constraint(equalToConstant: 150)
         ])
-
-        // Hide volume slider
-        volumeSliderView?.removeFromSuperview()
-        volumeSliderView = nil
     }
 
     @objc private func volumeTapped() {
@@ -343,11 +349,22 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        let session = AVAudioSession.sharedInstance()
-        let volume = session.outputVolume
-        let sliderView = createVerticalSlider(value: Float(volume), min: 0, max: 1) { [weak self] value in
-            // Note: iOS doesn't allow direct volume setting, use MPVolumeView
+        dismissSliderPopups()
+
+        // Get current volume from MPVolumeView slider
+        let currentVolume: Float
+        if let slider = volumeView?.subviews.first(where: { $0 is UISlider }) as? UISlider {
+            currentVolume = slider.value
+        } else {
+            currentVolume = AVAudioSession.sharedInstance().outputVolume
+        }
+
+        let sliderView = createVerticalSlider(type: .volume, value: currentVolume, min: 0, max: 1) { [weak self] value in
+            if let slider = self?.volumeView?.subviews.first(where: { $0 is UISlider }) as? UISlider {
+                slider.value = value
+            }
             self?.updateVolumeIcon(value: value)
+            self?.showGestureIndicator(type: .volume, value: CGFloat(value))
         }
         sliderView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(sliderView)
@@ -359,13 +376,9 @@ final class PlayerViewController: UIViewController {
             sliderView.widthAnchor.constraint(equalToConstant: 44),
             sliderView.heightAnchor.constraint(equalToConstant: 150)
         ])
-
-        // Hide brightness slider
-        brightnessSliderView?.removeFromSuperview()
-        brightnessSliderView = nil
     }
 
-    private func createVerticalSlider(value: Float, min: Float, max: Float, changed: @escaping (Float) -> Void) -> UIView {
+    private func createVerticalSlider(type: GestureIndicatorType, value: Float, min: Float, max: Float, changed: @escaping (Float) -> Void) -> UIView {
         let container = UIView()
         container.backgroundColor = UIColor.black.withAlphaComponent(0.7)
         container.layer.cornerRadius = 22
@@ -565,6 +578,12 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func toggleControls() {
+        // Dismiss any slider popups first
+        if brightnessSliderView != nil || volumeSliderView != nil {
+            dismissSliderPopups()
+            return
+        }
+
         if isControlsHidden {
             showControls()
         } else {

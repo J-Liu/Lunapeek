@@ -852,7 +852,10 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         present(loadingAlert, animated: true)
 
         Task { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                await MainActor.run { loadingAlert.dismiss(animated: true) }
+                return
+            }
 
             do {
                 // Get file size first
@@ -877,11 +880,11 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
 
                     if let client = self.smbClient {
                         let data = try await client.readFile(remotePath: remotePath, offset: offset, length: length)
-                        debugLog("Read \(data.count) bytes from SMB, first bytes: \(data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " "))")
+                        debugLog("Read \(data.count) bytes from SMB")
                         return data
                     } else if let client = self.sftpClient {
                         let data = try await client.readFile(remotePath: remotePath, offset: offset, length: length)
-                        debugLog("Read \(data.count) bytes from SFTP, first bytes: \(data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " "))")
+                        debugLog("Read \(data.count) bytes from SFTP")
                         return data
                     } else {
                         throw NSError(domain: "RemoteFileBrowser", code: 0, userInfo: [NSLocalizedDescriptionKey: "Not connected"])
@@ -889,6 +892,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
                 }
 
                 guard let url = proxy.localURL else {
+                    proxy.stop()
                     throw NSError(domain: "RemoteFileBrowser", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to get proxy URL"])
                 }
                 debugLog("Proxy URL: \(url.absoluteString)")

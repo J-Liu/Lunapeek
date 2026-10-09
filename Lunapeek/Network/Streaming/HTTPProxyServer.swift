@@ -125,8 +125,7 @@ final class HTTPProxyServer: @unchecked Sendable {
         connectionsLock.unlock()
 
         for connection in connections {
-            // Force cancel without waiting for state handler
-            connection.forceCancel()
+            connection.cancel()
         }
 
         // Cancel listener
