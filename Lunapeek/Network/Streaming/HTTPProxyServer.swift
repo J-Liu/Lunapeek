@@ -12,6 +12,11 @@ final class HTTPProxyServer: @unchecked Sendable {
     private var _port: UInt16 = 0
     private let queue = DispatchQueue(label: "com.lunapeek.http-proxy")
     private let portLock = NSLock()
+    private var isRunning = false
+
+    // Active connections
+    private var activeConnections: [NWConnection] = []
+    private let connectionsLock = NSLock()
 
     // Data source
     private var fileSize: Int64 = 0
@@ -97,6 +102,7 @@ final class HTTPProxyServer: @unchecked Sendable {
             self?.handleConnection(connection)
         }
 
+        isRunning = true
         listener?.start(queue: queue)
 
         // Wait for server to be ready
@@ -110,6 +116,19 @@ final class HTTPProxyServer: @unchecked Sendable {
     }
 
     func stop() {
+        isRunning = false
+
+        // Cancel all active connections
+        connectionsLock.lock()
+        let connections = activeConnections
+        activeConnections.removeAll()
+        connectionsLock.unlock()
+
+        for connection in connections {
+            connection.cancel()
+        }
+
+        // Cancel listener
         listener?.cancel()
         listener = nil
         portLock.lock()
@@ -119,7 +138,31 @@ final class HTTPProxyServer: @unchecked Sendable {
     }
 
     private func handleConnection(_ connection: NWConnection) {
+        // Check if server is still running
+        guard isRunning else {
+            connection.cancel()
+            return
+        }
+
+        // Track connection
+        connectionsLock.lock()
+        activeConnections.append(connection)
+        connectionsLock.unlock()
+
         connection.start(queue: queue)
+
+        // Set up state handler to remove connection when done
+        connection.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .failed, .cancelled:
+                self?.connectionsLock.lock()
+                self?.activeConnections.removeAll { $0 === connection }
+                self?.connectionsLock.unlock()
+            default:
+                break
+            }
+        }
+
         // Keep reading requests on the same connection (HTTP keep-alive)
         readNextRequest(connection: connection)
     }
@@ -163,6 +206,12 @@ final class HTTPProxyServer: @unchecked Sendable {
     }
 
     private func handleRequest(_ request: String, connection: NWConnection, completion: @escaping () -> Void) {
+        // Check if server is still running
+        guard isRunning else {
+            connection.cancel()
+            return
+        }
+
         // Debug log
         log("Request: \(request.prefix(200))")
 

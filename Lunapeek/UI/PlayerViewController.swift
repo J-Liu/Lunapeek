@@ -38,12 +38,12 @@ final class PlayerViewController: UIViewController {
     }
 
     deinit {
-        // Ensure cleanup on deallocation
+        // Remove observer first (safe even if player is gone)
         if let observer = timeObserver {
             avPlayer?.removeTimeObserver(observer)
+            timeObserver = nil
         }
-        avPlayer?.pause()
-        avPlayerLayer?.removeFromSuperlayer()
+        // Stop proxy server
         proxyServer?.stop()
     }
 
