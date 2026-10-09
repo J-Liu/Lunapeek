@@ -86,6 +86,8 @@ public protocol SFTPClientProtocol {
         localURL: URL,
         progress: @escaping (SFTPProgress) -> Void
     ) async throws
+    func readFile(remotePath: String, offset: Int64, length: Int) async throws -> Data
+    func getFileSize(remotePath: String) async throws -> Int64
     func cancelDownload() async
     func getHomeDirectory() async throws -> String
     var isConnected: Bool { get }

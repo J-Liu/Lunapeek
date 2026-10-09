@@ -8,17 +8,10 @@ import Foundation
 /// Factory for creating appropriate demuxer based on URL.
 public struct DemuxerFactory {
     public static func createDemuxer(for url: URL) -> DemuxerPlugin {
-        let scheme = url.scheme?.lowercased()
-
-        // Network protocols use FFmpeg demuxer
-        if let scheme = scheme, ["sftp", "smb", "http", "https", "rtmp", "rtsp"].contains(scheme) {
-            return FFmpegDemuxerPlugin()
-        }
-
-        // Local files: prefer system demuxer, fallback to FFmpeg
         let pathExtension = url.pathExtension.lowercased()
         let systemSupported = ["mp4", "mov", "m4v", "3gp"]
 
+        // For MP4/MOV files (local or via HTTP proxy), use SystemDemuxerPlugin
         if systemSupported.contains(pathExtension) {
             return SystemDemuxerPlugin()
         }

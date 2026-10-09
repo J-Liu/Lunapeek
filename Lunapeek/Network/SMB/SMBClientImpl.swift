@@ -155,4 +155,30 @@ public final class SMBClientWrapper: SMBClientProtocol {
     public func cancelDownload() async {
         // SMBClient library doesn't support cancellation directly
     }
+
+    public func readFile(remotePath: String, offset: Int64, length: Int) async throws -> Data {
+        guard let client = client, _isConnected else {
+            throw SMBError.notConnected
+        }
+
+        do {
+            let reader = client.fileReader(path: remotePath)
+            return try await reader.read(offset: UInt64(offset), length: UInt32(length))
+        } catch {
+            throw SMBError.downloadFailed(error)
+        }
+    }
+
+    public func getFileSize(remotePath: String) async throws -> Int64 {
+        guard let client = client, _isConnected else {
+            throw SMBError.notConnected
+        }
+
+        do {
+            let info = try await client.fileInfo(path: remotePath)
+            return Int64(info.standardInformation.endOfFile)
+        } catch {
+            throw SMBError.fileNotFound
+        }
+    }
 }

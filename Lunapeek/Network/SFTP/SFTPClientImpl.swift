@@ -143,4 +143,30 @@ public final class SFTPClientWrapper: SFTPClientProtocol {
             try await sftp.getRealPath(atPath: ".")
         }
     }
+
+    public func readFile(remotePath: String, offset: Int64, length: Int) async throws -> Data {
+        guard let sshClient = sshClient else {
+            throw SFTPError.notConnected
+        }
+
+        return try await sshClient.withSFTP { sftp in
+            try await sftp.withFile(filePath: remotePath, flags: .read) { file in
+                let buffer = try await file.read(from: UInt64(offset), length: UInt32(length))
+                var data = Data()
+                data.append(contentsOf: buffer.readableBytesView)
+                return data
+            }
+        }
+    }
+
+    public func getFileSize(remotePath: String) async throws -> Int64 {
+        guard let sshClient = sshClient else {
+            throw SFTPError.notConnected
+        }
+
+        return try await sshClient.withSFTP { sftp in
+            let attrs = try await sftp.getAttributes(at: remotePath)
+            return Int64(attrs.size ?? 0)
+        }
+    }
 }

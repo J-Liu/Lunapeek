@@ -9,6 +9,9 @@ import AVFoundation
 final class PlayerViewController: UIViewController {
     private let url: URL
     private var playerEngine: PlayerEngine?
+    private var avPlayer: AVPlayer?
+    private var avPlayerLayer: AVPlayerLayer?
+    private var proxyServer: HTTPProxyServer?
     private var videoView: UIView!
 
     private var controlView: UIView!
@@ -18,8 +21,14 @@ final class PlayerViewController: UIViewController {
     private var timeLabel: UILabel!
     private var isControlsHidden = false
 
-    init(url: URL) {
+    // Debug log view
+    private var debugTextView: UITextView!
+    private var logEntries: [String] = []
+    private var isDebugVisible = false
+
+    init(url: URL, proxyServer: HTTPProxyServer? = nil) {
         self.url = url
+        self.proxyServer = proxyServer
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -29,9 +38,22 @@ final class PlayerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        LogManager.shared.clear()
+        LogManager.shared.handler = { [weak self] entry in
+            DispatchQueue.main.async {
+                self?.logEntries.append(entry)
+                if self!.logEntries.count > 50 { self!.logEntries.removeFirst() }
+                self?.debugTextView?.text = self?.logEntries.joined(separator: "\n")
+                self?.debugTextView?.scrollToBottom()
+            }
+        }
         setupUI()
         setupPlayer()
         setupGestures()
+    }
+
+    private func log(_ message: String) {
+        Lunapeek.debugLog("🎬 \(message)")
     }
 
     override var prefersStatusBarHidden: Bool {
@@ -51,6 +73,17 @@ final class PlayerViewController: UIViewController {
         videoView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(videoView)
 
+        // Debug log view (initially hidden)
+        debugTextView = UITextView()
+        debugTextView.backgroundColor = UIColor.black.withAlphaComponent(0.9)
+        debugTextView.textColor = .green
+        debugTextView.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        debugTextView.isEditable = false
+        debugTextView.isSelectable = true
+        debugTextView.translatesAutoresizingMaskIntoConstraints = false
+        debugTextView.isHidden = true
+        view.addSubview(debugTextView)
+
         // Control overlay
         controlView = UIView(frame: .zero)
         controlView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
@@ -64,6 +97,14 @@ final class PlayerViewController: UIViewController {
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(closeButton)
+
+        // Debug button
+        let debugButton = UIButton(type: .system)
+        debugButton.setImage(UIImage(systemName: "ladybug"), for: .normal)
+        debugButton.tintColor = .yellow
+        debugButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
+        debugButton.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(debugButton)
 
         // Play button
         playButton = UIButton(type: .system)
@@ -98,6 +139,11 @@ final class PlayerViewController: UIViewController {
             videoView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             videoView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
+            debugTextView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 60),
+            debugTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            debugTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            debugTextView.heightAnchor.constraint(equalToConstant: 200),
+
             controlView.topAnchor.constraint(equalTo: view.topAnchor),
             controlView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             controlView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -107,6 +153,11 @@ final class PlayerViewController: UIViewController {
             closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 44),
             closeButton.heightAnchor.constraint(equalToConstant: 44),
+
+            debugButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            debugButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -8),
+            debugButton.widthAnchor.constraint(equalToConstant: 44),
+            debugButton.heightAnchor.constraint(equalToConstant: 44),
 
             playButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             playButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
@@ -122,8 +173,26 @@ final class PlayerViewController: UIViewController {
         ])
     }
 
+    @objc private func toggleDebug() {
+        isDebugVisible.toggle()
+        debugTextView.isHidden = !isDebugVisible
+    }
+
     private func setupPlayer() {
-        let demuxer = SystemDemuxerPlugin()
+        log("URL: \(url.absoluteString)")
+        log("Extension: \(url.pathExtension)")
+
+        // Check if URL is HTTP - use AVPlayer directly
+        if url.scheme == "http" || url.scheme == "https" {
+            log("Using AVPlayer for HTTP URL")
+            setupAVPlayer()
+            return
+        }
+
+        // Local file - use custom PlayerEngine
+        let demuxer = DemuxerFactory.createDemuxer(for: url)
+        log("Demuxer: \(type(of: demuxer))")
+
         let videoDecoder = VideoToolboxDecoderPlugin()
         let audioDecoder = AudioToolboxDecoderPlugin()
         let videoRenderer = VideoRenderer()
@@ -142,15 +211,35 @@ final class PlayerViewController: UIViewController {
 
         Task {
             do {
+                log("Loading asset...")
                 try await playerEngine?.load(url: url)
+                log("✅ Loaded successfully")
                 activateAudioSession()
                 playerEngine?.play()
                 updatePlayButton()
             } catch {
-                print("Failed to load: \(error)")
+                log("❌ Error: \(error)")
                 showError(error)
             }
         }
+    }
+
+    private func setupAVPlayer() {
+        let player = AVPlayer(url: url)
+        avPlayer = player
+
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.frame = videoView.bounds
+        playerLayer.videoGravity = .resizeAspect
+        videoView.layer.addSublayer(playerLayer)
+        avPlayerLayer = playerLayer
+
+        activateAudioSession()
+        player.play()
+        log("✅ AVPlayer started")
+
+        // Update play button state
+        playButton.setImage(UIImage(systemName: "pause.fill"), for: .normal)
     }
 
     private func activateAudioSession() {
@@ -196,6 +285,12 @@ final class PlayerViewController: UIViewController {
     @objc private func closeTapped() {
         Task {
             await playerEngine?.stop()
+            avPlayer?.pause()
+            avPlayer = nil
+            avPlayerLayer?.removeFromSuperlayer()
+            avPlayerLayer = nil
+            proxyServer?.stop()
+            proxyServer = nil
             deactivateAudioSession()
             await MainActor.run {
                 self.dismiss(animated: true)
@@ -204,6 +299,19 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func playPauseTapped() {
+        // Handle AVPlayer
+        if let player = avPlayer {
+            if player.timeControlStatus == .playing {
+                player.pause()
+                playButton.setImage(UIImage(systemName: "play.fill"), for: .normal)
+            } else {
+                player.play()
+                playButton.setImage(UIImage(systemName: "pause.fill"), for: .normal)
+            }
+            return
+        }
+
+        // Handle PlayerEngine
         guard let engine = playerEngine else { return }
 
         switch engine.state {
@@ -232,19 +340,43 @@ final class PlayerViewController: UIViewController {
     }
 
     private func showError(_ error: Error) {
+        var message = error.localizedDescription
+        if let demuxerError = error as? DemuxerError {
+            switch demuxerError {
+            case .failedToLoadTracks:
+                message = "Failed to load video tracks"
+            case .failedToStartReading(let innerError):
+                message = "Failed to start reading: \(innerError?.localizedDescription ?? "unknown")"
+            case .readerError(let innerError):
+                message = "Reader error: \(innerError?.localizedDescription ?? "unknown")"
+            case .noAsset:
+                message = "No asset loaded"
+            }
+        }
+
+        // Show error and force show debug log
+        isDebugVisible = true
+        debugTextView.isHidden = false
+
         let alert = UIAlertController(
             title: "Playback Error",
-            message: error.localizedDescription,
+            message: message + "\n\nSee debug log above for details",
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-            self?.dismiss(animated: true)
-        })
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         playerEngine?.videoRendererLayer?.frame = videoView.bounds
+        avPlayerLayer?.frame = videoView.bounds
+    }
+}
+
+extension UITextView {
+    func scrollToBottom() {
+        let range = NSMakeRange(text.count - 1, 1)
+        scrollRangeToVisible(range)
     }
 }

@@ -16,6 +16,9 @@ final class RemoteFileBrowserViewController: UIViewController {
     private var sftpClient: SFTPClientWrapper?
     private weak var currentMenuVC: UIViewController?
 
+    // HTTP proxy server for streaming
+    private var proxyServer: HTTPProxyServer?
+
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
@@ -82,9 +85,11 @@ final class RemoteFileBrowserViewController: UIViewController {
     deinit {
         let smb = smbClient
         let sftp = sftpClient
+        let proxy = proxyServer
         Task {
             await smb?.disconnect()
             await sftp?.disconnect()
+            proxy?.stop()
         }
     }
 
@@ -442,8 +447,12 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
                     await loadDirectory()
                 }
             } else {
-                // Open file
-                print("Open: \(item.name)")
+                // Check if video file
+                let ext = (item.name as NSString).pathExtension.lowercased()
+                let videoExtensions = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv", "ts", "mts", "m2ts"]
+                if videoExtensions.contains(ext) {
+                    playRemoteFile(item)
+                }
             }
         }
     }
@@ -833,6 +842,91 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         let alert = UIAlertController(title: "Info", message: info, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
+    }
+
+    // MARK: - Remote File Playback
+
+    private func playRemoteFile(_ item: RemoteFileItem) {
+        let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
+
+        debugLog("Starting playback for: \(item.name)")
+        debugLog("Remote path: \(remotePath)")
+
+        // Show loading indicator
+        let loadingAlert = UIAlertController(title: "Loading...", message: "Preparing \(item.name)", preferredStyle: .alert)
+        present(loadingAlert, animated: true)
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                // Get file size first
+                debugLog("Getting file size...")
+                let fileSize: Int64
+                if let client = smbClient {
+                    fileSize = try await client.getFileSize(remotePath: remotePath)
+                    debugLog("File size (SMB): \(fileSize) bytes")
+                } else if let client = sftpClient {
+                    fileSize = try await client.getFileSize(remotePath: remotePath)
+                    debugLog("File size (SFTP): \(fileSize) bytes")
+                } else {
+                    throw NSError(domain: "RemoteFileBrowser", code: 0, userInfo: [NSLocalizedDescriptionKey: "Not connected"])
+                }
+
+                // Create HTTP proxy server
+                debugLog("Creating HTTP proxy server...")
+                let proxy = HTTPProxyServer()
+                try await proxy.start(fileName: item.name, fileSize: fileSize) { [weak self] offset, length in
+                    debugLog("Data request: offset=\(offset), length=\(length)")
+                    guard let self else { throw NSError(domain: "RemoteFileBrowser", code: 0, userInfo: [NSLocalizedDescriptionKey: "Disconnected"]) }
+
+                    if let client = self.smbClient {
+                        let data = try await client.readFile(remotePath: remotePath, offset: offset, length: length)
+                        debugLog("Read \(data.count) bytes from SMB, first bytes: \(data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " "))")
+                        return data
+                    } else if let client = self.sftpClient {
+                        let data = try await client.readFile(remotePath: remotePath, offset: offset, length: length)
+                        debugLog("Read \(data.count) bytes from SFTP, first bytes: \(data.prefix(8).map { String(format: "%02X", $0) }.joined(separator: " "))")
+                        return data
+                    } else {
+                        throw NSError(domain: "RemoteFileBrowser", code: 0, userInfo: [NSLocalizedDescriptionKey: "Not connected"])
+                    }
+                }
+
+                self.proxyServer = proxy
+
+                if let url = proxy.localURL {
+                    debugLog("Proxy URL: \(url.absoluteString)")
+                } else {
+                    debugLog("ERROR: Proxy URL is nil!")
+                }
+
+                await MainActor.run { [weak self] in
+                    loadingAlert.dismiss(animated: true) { [weak self] in
+                        guard let self, let url = self.proxyServer?.localURL else {
+                            debugLog("No proxy URL available")
+                            return
+                        }
+                        // Present player with proxy URL, pass proxy server ownership
+                        let playerVC = PlayerViewController(url: url, proxyServer: self.proxyServer)
+                        playerVC.modalPresentationStyle = .fullScreen
+                        self.present(playerVC, animated: true)
+                    }
+                }
+            } catch {
+                debugLog("Error: \(error)")
+                await MainActor.run { [weak self] in
+                    loadingAlert.dismiss(animated: true)
+                    let alert = UIAlertController(
+                        title: "Playback Error",
+                        message: "Failed to load video: \(error.localizedDescription)",
+                        preferredStyle: .alert
+                    )
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(alert, animated: true)
+                }
+            }
+        }
     }
 }
 

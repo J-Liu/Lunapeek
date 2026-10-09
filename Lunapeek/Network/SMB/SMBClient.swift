@@ -95,6 +95,8 @@ public protocol SMBClientProtocol {
         localURL: URL,
         progress: @escaping (SMBProgress) -> Void
     ) async throws
+    func readFile(remotePath: String, offset: Int64, length: Int) async throws -> Data
+    func getFileSize(remotePath: String) async throws -> Int64
     func cancelDownload() async
     var isConnected: Bool { get }
 }
