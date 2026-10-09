@@ -3,6 +3,7 @@
 // Licensed under AGPL-3.0-or-later with an additional permission
 // under Section 7. See LICENSE for details.
 
+import AVFoundation
 import PhotosUI
 import UIKit
 
@@ -390,9 +391,10 @@ final class MediaItemCell: UICollectionViewCell {
 
     func configure(with item: LocalMediaItem, mediaType: MediaType) {
         titleLabel.text = item.name
-        thumbnailView.image = UIImage(systemName: mediaType == .video ? "video.fill" : "music.note")
-        thumbnailView.tintColor = .systemGray3
-        thumbnailView.contentMode = .center
+
+        // Reset thumbnail
+        thumbnailView.image = nil
+        thumbnailView.contentMode = .scaleAspectFill
 
         if let modified = item.modified {
             let formatter = DateFormatter()
@@ -401,6 +403,43 @@ final class MediaItemCell: UICollectionViewCell {
             detailLabel.text = formatter.string(from: modified)
         } else {
             detailLabel.text = nil
+        }
+
+        // Generate thumbnail for video files
+        if mediaType == .video {
+            generateThumbnail(for: item.url)
+        } else {
+            // Audio: show icon
+            thumbnailView.image = UIImage(systemName: "music.note")
+            thumbnailView.tintColor = .systemGray3
+            thumbnailView.contentMode = .center
+        }
+    }
+
+    private func generateThumbnail(for url: URL) {
+        let asset = AVAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 400, height: 400)
+
+        let time = CMTime(seconds: 1, preferredTimescale: 600)
+
+        generator.generateCGImageAsynchronously(for: time) { [weak self] cgImage, _, error in
+            guard let cgImage = cgImage, error == nil else {
+                // Failed: show default icon
+                DispatchQueue.main.async {
+                    self?.thumbnailView.image = UIImage(systemName: "video.fill")
+                    self?.thumbnailView.tintColor = .systemGray3
+                    self?.thumbnailView.contentMode = .center
+                }
+                return
+            }
+
+            let image = UIImage(cgImage: cgImage)
+            DispatchQueue.main.async {
+                self?.thumbnailView.image = image
+                self?.thumbnailView.contentMode = .scaleAspectFill
+            }
         }
     }
 }
