@@ -38,7 +38,7 @@ final class PlayerViewController: UIViewController {
     private var volumeView: MPVolumeView?
 
     private var isFullscreen: Bool {
-        return view.bounds.width > view.bounds.height
+        return isFullscreenMode
     }
 
     // Debug log view
@@ -269,13 +269,6 @@ final class PlayerViewController: UIViewController {
         }
     }
 
-    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
-        super.viewWillTransition(to: size, with: coordinator)
-        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
-            self?.updateRightTopButton()
-        }
-    }
-
     @objc private func toggleDebug() {
         isDebugVisible.toggle()
         debugTextView.isHidden = !isDebugVisible
@@ -440,7 +433,7 @@ final class PlayerViewController: UIViewController {
         resetControlsHideTimer()
         if isFullscreen {
             // Exit fullscreen
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            exitFullscreen()
         } else {
             // Exit player
             closeTapped()
@@ -454,8 +447,41 @@ final class PlayerViewController: UIViewController {
             closeTapped()
         } else {
             // Enter fullscreen
-            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            enterFullscreen()
         }
+    }
+
+    private var isFullscreenMode = false
+
+    private func enterFullscreen() {
+        isFullscreenMode = true
+        updateRightTopButton()
+
+        // Rotate to landscape by rotating the view
+        let rotationAngle = CGFloat.pi / 2
+        UIView.animate(withDuration: 0.3) {
+            self.view.transform = CGAffineTransform(rotationAngle: rotationAngle)
+            self.view.bounds = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.height, height: UIScreen.main.bounds.width)
+        }
+
+        // Update video layer
+        avPlayerLayer?.frame = videoView.bounds
+        playerEngine?.videoRendererLayer?.frame = videoView.bounds
+    }
+
+    private func exitFullscreen() {
+        isFullscreenMode = false
+        updateRightTopButton()
+
+        // Rotate back to portrait
+        UIView.animate(withDuration: 0.3) {
+            self.view.transform = .identity
+            self.view.bounds = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+        }
+
+        // Update video layer
+        avPlayerLayer?.frame = videoView.bounds
+        playerEngine?.videoRendererLayer?.frame = videoView.bounds
     }
 
     private func setupPlayer() {
