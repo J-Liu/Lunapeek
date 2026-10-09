@@ -37,6 +37,16 @@ final class PlayerViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        // Ensure cleanup on deallocation
+        if let observer = timeObserver {
+            avPlayer?.removeTimeObserver(observer)
+        }
+        avPlayer?.pause()
+        avPlayerLayer?.removeFromSuperlayer()
+        proxyServer?.stop()
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         LogManager.shared.clear()
@@ -293,21 +303,23 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func closeTapped() {
-        Task {
-            await playerEngine?.stop()
-            if let observer = timeObserver {
-                avPlayer?.removeTimeObserver(observer)
-                timeObserver = nil
-            }
-            avPlayer?.pause()
-            avPlayer = nil
-            avPlayerLayer?.removeFromSuperlayer()
-            avPlayerLayer = nil
-            proxyServer?.stop()
-            proxyServer = nil
-            deactivateAudioSession()
+        // Cleanup must happen on main thread for AVPlayer
+        if let observer = timeObserver {
+            avPlayer?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+        avPlayer?.pause()
+        avPlayer = nil
+        avPlayerLayer?.removeFromSuperlayer()
+        avPlayerLayer = nil
+        proxyServer?.stop()
+        proxyServer = nil
+        deactivateAudioSession()
+
+        Task { [weak self] in
+            await self?.playerEngine?.stop()
             await MainActor.run {
-                self.dismiss(animated: true)
+                self?.dismiss(animated: true)
             }
         }
     }

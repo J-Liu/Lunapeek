@@ -16,9 +16,6 @@ final class RemoteFileBrowserViewController: UIViewController {
     private var sftpClient: SFTPClientWrapper?
     private weak var currentMenuVC: UIViewController?
 
-    // HTTP proxy server for streaming
-    private var proxyServer: HTTPProxyServer?
-
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
@@ -85,11 +82,9 @@ final class RemoteFileBrowserViewController: UIViewController {
     deinit {
         let smb = smbClient
         let sftp = sftpClient
-        let proxy = proxyServer
         Task {
             await smb?.disconnect()
             await sftp?.disconnect()
-            proxy?.stop()
         }
     }
 
@@ -893,22 +888,16 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
                     }
                 }
 
-                self.proxyServer = proxy
-
-                if let url = proxy.localURL {
-                    debugLog("Proxy URL: \(url.absoluteString)")
-                } else {
-                    debugLog("ERROR: Proxy URL is nil!")
+                guard let url = proxy.localURL else {
+                    throw NSError(domain: "RemoteFileBrowser", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to get proxy URL"])
                 }
+                debugLog("Proxy URL: \(url.absoluteString)")
 
                 await MainActor.run { [weak self] in
                     loadingAlert.dismiss(animated: true) { [weak self] in
-                        guard let self, let url = self.proxyServer?.localURL else {
-                            debugLog("No proxy URL available")
-                            return
-                        }
+                        guard let self else { return }
                         // Present player with proxy URL, pass proxy server ownership
-                        let playerVC = PlayerViewController(url: url, proxyServer: self.proxyServer)
+                        let playerVC = PlayerViewController(url: url, proxyServer: proxy)
                         playerVC.modalPresentationStyle = .fullScreen
                         self.present(playerVC, animated: true)
                     }
