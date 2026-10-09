@@ -38,6 +38,8 @@ final class PlayerViewController: UIViewController {
     }
 
     deinit {
+        // Clear log handler to prevent callbacks to deallocated self
+        LogManager.shared.handler = nil
         // Remove observer first (safe even if player is gone)
         if let observer = timeObserver {
             avPlayer?.removeTimeObserver(observer)
@@ -52,10 +54,11 @@ final class PlayerViewController: UIViewController {
         LogManager.shared.clear()
         LogManager.shared.handler = { [weak self] entry in
             DispatchQueue.main.async {
-                self?.logEntries.append(entry)
-                if self!.logEntries.count > 50 { self!.logEntries.removeFirst() }
-                self?.debugTextView?.text = self?.logEntries.joined(separator: "\n")
-                self?.debugTextView?.scrollToBottom()
+                guard let self else { return }
+                self.logEntries.append(entry)
+                if self.logEntries.count > 50 { self.logEntries.removeFirst() }
+                self.debugTextView?.text = self.logEntries.joined(separator: "\n")
+                self.debugTextView?.scrollToBottom()
             }
         }
         setupUI()
