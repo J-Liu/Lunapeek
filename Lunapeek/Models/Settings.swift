@@ -4,6 +4,7 @@
 // under Section 7. See LICENSE for details.
 
 import Foundation
+import AVFoundation
 
 final class Settings {
     static let shared = Settings()
@@ -16,9 +17,9 @@ final class Settings {
         static let showNonMediaFiles = "showNonMediaFiles"
         static let autoPlayNext = "autoPlayNext"
         static let backgroundPlay = "backgroundPlay"
-        static let hardwareDecode = "hardwareDecode"
         static let defaultAspectRatio = "defaultAspectRatio"
         static let repeatMode = "repeatMode"
+        static let exitBehavior = "exitBehavior"
     }
 
     // MARK: - File Browser
@@ -59,14 +60,14 @@ final class Settings {
     }
 
     // MARK: - Video
-    var hardwareDecode: HardwareDecode {
-        get { HardwareDecode(rawValue: defaults.string(forKey: Key.hardwareDecode) ?? "auto") ?? .auto }
-        set { defaults.set(newValue.rawValue, forKey: Key.hardwareDecode) }
-    }
-
     var defaultAspectRatio: AspectRatio {
         get { AspectRatio(rawValue: defaults.string(forKey: Key.defaultAspectRatio) ?? "fit") ?? .fit }
         set { defaults.set(newValue.rawValue, forKey: Key.defaultAspectRatio) }
+    }
+
+    var exitBehavior: ExitBehavior {
+        get { ExitBehavior(rawValue: defaults.string(forKey: Key.exitBehavior) ?? "pip") ?? .pip }
+        set { defaults.set(newValue.rawValue, forKey: Key.exitBehavior) }
     }
 
     private init() {
@@ -94,20 +95,6 @@ enum RepeatMode: String, CaseIterable {
     }
 }
 
-enum HardwareDecode: String, CaseIterable {
-    case auto = "auto"
-    case enabled = "enabled"
-    case disabled = "disabled"
-
-    var displayName: String {
-        switch self {
-        case .auto: return "Auto"
-        case .enabled: return "Enabled"
-        case .disabled: return "Disabled"
-        }
-    }
-}
-
 enum AspectRatio: String, CaseIterable {
     case fit = "fit"
     case fill = "fill"
@@ -118,6 +105,28 @@ enum AspectRatio: String, CaseIterable {
         case .fit: return "Fit"
         case .fill: return "Fill"
         case .stretch: return "Stretch"
+        }
+    }
+
+    var videoGravity: AVLayerVideoGravity {
+        switch self {
+        case .fit: return .resizeAspect
+        case .fill: return .resizeAspectFill
+        case .stretch: return .resize
+        }
+    }
+}
+
+enum ExitBehavior: String, CaseIterable {
+    case pip = "pip"
+    case background = "background"
+    case pause = "pause"
+
+    var displayName: String {
+        switch self {
+        case .pip: return "Picture in Picture"
+        case .background: return "Background Play"
+        case .pause: return "Pause"
         }
     }
 }

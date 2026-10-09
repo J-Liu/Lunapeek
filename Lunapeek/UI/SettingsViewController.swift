@@ -41,8 +41,8 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
         case 0: return 4 // File Browser
-        case 1: return 3 // Playback
-        case 2: return 2 // Video
+        case 1: return 4 // Playback
+        case 2: return 1 // Video (only aspect ratio now)
         case 3: return 2 // About
         default: return 0
         }
@@ -104,22 +104,22 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
             case 2:
-                cell.textLabel?.text = "Background Play"
+                cell.textLabel?.text = "Audio Background Play"
                 let toggle = UISwitch()
                 toggle.isOn = Settings.shared.backgroundPlay
                 toggle.addTarget(self, action: #selector(backgroundPlayChanged(_:)), for: .valueChanged)
                 cell.accessoryView = toggle
+            case 3:
+                cell.textLabel?.text = "Exit Behavior"
+                cell.detailTextLabel?.text = Settings.shared.exitBehavior.displayName
+                cell.selectionStyle = .default
+                cell.accessoryType = .disclosureIndicator
             default: break
             }
 
         case 2: // Video
             switch indexPath.row {
             case 0:
-                cell.textLabel?.text = "Hardware Decode"
-                cell.detailTextLabel?.text = Settings.shared.hardwareDecode.displayName
-                cell.selectionStyle = .default
-                cell.accessoryType = .disclosureIndicator
-            case 1:
                 cell.textLabel?.text = "Default Aspect Ratio"
                 cell.detailTextLabel?.text = Settings.shared.defaultAspectRatio.displayName
                 cell.selectionStyle = .default
@@ -158,11 +158,11 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 1:
             if indexPath.row == 1 {
                 showRepeatModePicker()
+            } else if indexPath.row == 3 {
+                showExitBehaviorPicker()
             }
         case 2:
             if indexPath.row == 0 {
-                showHardwareDecodePicker()
-            } else if indexPath.row == 1 {
                 showAspectRatioPicker()
             }
         case 3:
@@ -208,55 +208,43 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         present(alert, animated: true)
     }
 
-    private func showRepeatModePicker() {
-        let alert = UIAlertController(title: "Repeat Mode", message: nil, preferredStyle: .actionSheet)
-        for mode in RepeatMode.allCases {
-            let isSelected = Settings.shared.repeatMode == mode
-            alert.addAction(UIAlertAction(title: mode.displayName + (isSelected ? " ✓" : ""), style: .default) { _ in
-                Settings.shared.repeatMode = mode
-                self.tableView.reloadData()
+    private func showPicker(title: String, message: String? = nil, items: [String], selectedIndex: Int, onSelect: @escaping (Int) -> Void) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
+        for (index, item) in items.enumerated() {
+            let isSelected = index == selectedIndex
+            alert.addAction(UIAlertAction(title: item + (isSelected ? " ✓" : ""), style: .default) { _ in
+                onSelect(index)
             })
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-        }
         present(alert, animated: true)
     }
 
-    private func showHardwareDecodePicker() {
-        let alert = UIAlertController(title: "Hardware Decode", message: nil, preferredStyle: .actionSheet)
-        for mode in HardwareDecode.allCases {
-            let isSelected = Settings.shared.hardwareDecode == mode
-            alert.addAction(UIAlertAction(title: mode.displayName + (isSelected ? " ✓" : ""), style: .default) { _ in
-                Settings.shared.hardwareDecode = mode
-                self.tableView.reloadData()
-            })
+    private func showRepeatModePicker() {
+        let items = RepeatMode.allCases.map { $0.displayName }
+        let selectedIndex = RepeatMode.allCases.firstIndex(of: Settings.shared.repeatMode) ?? 0
+        showPicker(title: "Repeat Mode", items: items, selectedIndex: selectedIndex) { index in
+            Settings.shared.repeatMode = RepeatMode.allCases[index]
+            self.tableView.reloadData()
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+    }
+
+    private func showExitBehaviorPicker() {
+        let items = ExitBehavior.allCases.map { $0.displayName }
+        let selectedIndex = ExitBehavior.allCases.firstIndex(of: Settings.shared.exitBehavior) ?? 0
+        showPicker(title: "Exit Behavior", message: "What happens when you leave during video playback", items: items, selectedIndex: selectedIndex) { index in
+            Settings.shared.exitBehavior = ExitBehavior.allCases[index]
+            self.tableView.reloadData()
         }
-        present(alert, animated: true)
     }
 
     private func showAspectRatioPicker() {
-        let alert = UIAlertController(title: "Default Aspect Ratio", message: nil, preferredStyle: .actionSheet)
-        for ratio in AspectRatio.allCases {
-            let isSelected = Settings.shared.defaultAspectRatio == ratio
-            alert.addAction(UIAlertAction(title: ratio.displayName + (isSelected ? " ✓" : ""), style: .default) { _ in
-                Settings.shared.defaultAspectRatio = ratio
-                self.tableView.reloadData()
-            })
+        let items = AspectRatio.allCases.map { $0.displayName }
+        let selectedIndex = AspectRatio.allCases.firstIndex(of: Settings.shared.defaultAspectRatio) ?? 0
+        showPicker(title: "Default Aspect Ratio", items: items, selectedIndex: selectedIndex) { index in
+            Settings.shared.defaultAspectRatio = AspectRatio.allCases[index]
+            self.tableView.reloadData()
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-        }
-        present(alert, animated: true)
     }
 
     private func showLicense() {
@@ -265,29 +253,35 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         vc.view.backgroundColor = .systemBackground
 
         let textView = UITextView()
-        textView.font = .systemFont(ofSize: 12)
+        textView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         textView.isEditable = false
-        textView.text = """
+        textView.isSelectable = true
+        textView.dataDetectorTypes = .link
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        vc.view.addSubview(textView)
+
+        // Load license text with clickable link
+        let licenseSummary = """
         GNU AFFERO GENERAL PUBLIC LICENSE
         Version 3, 19 November 2007
 
+        Copyright (C) 2007 Free Software Foundation, Inc.
+
+        Additional Permission under Section 7
+
+        As an additional permission under section 7, you are allowed to distribute
+        the software through an app store, even if that store has restrictive terms
+        and conditions that are incompatible with the AGPL, provided that the source
+        is also available under the AGPL with or without this permission through a
+        channel without those restrictive terms and conditions.
+
         Copyright (C) 2026 Jia Liu
 
-        This program is free software: you can redistribute it and/or modify
-        it under the terms of the GNU Affero General Public License as
-        published by the Free Software Foundation, either version 3 of the
-        License, or (at your option) any later version.
-
-        This program is distributed in the hope that it will be useful,
-        but WITHOUT ANY WARRANTY; without even the implied warranty of
-        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-        GNU Affero General Public License for more details.
-
-        You should have received a copy of the GNU Affero General Public License
-        along with this program.  If not, see <https://www.gnu.org/licenses/>.
+        Full license text:
+        https://github.com/J-Liu/Lunapeek/blob/main/LICENSE
         """
-        textView.translatesAutoresizingMaskIntoConstraints = false
-        vc.view.addSubview(textView)
+
+        textView.text = licenseSummary
 
         NSLayoutConstraint.activate([
             textView.topAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.topAnchor),
