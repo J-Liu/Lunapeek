@@ -12,6 +12,7 @@ final class PlayerViewController: UIViewController {
     private var avPlayer: AVPlayer?
     private var avPlayerLayer: AVPlayerLayer?
     private var proxyServer: HTTPProxyServer?
+    private var timeObserver: Any?
     private var videoView: UIView!
 
     private var controlView: UIView!
@@ -234,12 +235,21 @@ final class PlayerViewController: UIViewController {
         videoView.layer.addSublayer(playerLayer)
         avPlayerLayer = playerLayer
 
+        // Add time observer for progress updates
+        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            self?.updateProgress()
+        }
+
         activateAudioSession()
         player.play()
         log("✅ AVPlayer started")
 
         // Update play button state
         playButton.setImage(UIImage(systemName: "pause.fill"), for: .normal)
+
+        // Update progress initially
+        updateProgress()
     }
 
     private func activateAudioSession() {
@@ -285,6 +295,10 @@ final class PlayerViewController: UIViewController {
     @objc private func closeTapped() {
         Task {
             await playerEngine?.stop()
+            if let observer = timeObserver {
+                avPlayer?.removeTimeObserver(observer)
+                timeObserver = nil
+            }
             avPlayer?.pause()
             avPlayer = nil
             avPlayerLayer?.removeFromSuperlayer()
@@ -326,7 +340,36 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func progressChanged() {
-        // TODO: Seek to position
+        guard let player = avPlayer else { return }
+
+        let duration = player.currentItem?.duration.seconds ?? 0
+        guard duration > 0 else { return }
+
+        let targetTime = duration * Double(progressBar.value) / 100
+        let cmTime = CMTime(seconds: targetTime, preferredTimescale: 600)
+        player.seek(to: cmTime)
+    }
+
+    private func updateProgress() {
+        guard let player = avPlayer else { return }
+
+        let currentTime = player.currentTime().seconds
+        let duration = player.currentItem?.duration.seconds ?? 0
+
+        if duration > 0 {
+            let progress = (currentTime / duration) * 100
+            progressBar.value = Float(progress)
+
+            let currentStr = formatTime(currentTime)
+            let durationStr = formatTime(duration)
+            timeLabel.text = "\(currentStr) / \(durationStr)"
+        }
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
     }
 
     private func updatePlayButton() {
