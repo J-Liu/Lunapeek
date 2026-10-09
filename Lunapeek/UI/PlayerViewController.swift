@@ -488,14 +488,14 @@ final class PlayerViewController: UIViewController {
         log("URL: \(url.absoluteString)")
         log("Extension: \(url.pathExtension)")
 
-        // Check if URL is HTTP - use AVPlayer directly
-        if url.scheme == "http" || url.scheme == "https" {
-            log("Using AVPlayer for HTTP URL")
+        // For all files, use AVPlayer (more stable for local files)
+        if url.scheme == "http" || url.scheme == "https" || url.isFileURL {
+            log("Using AVPlayer")
             setupAVPlayer()
             return
         }
 
-        // Local file - use custom PlayerEngine
+        // Other protocols - use custom PlayerEngine (not commonly used)
         let demuxer = DemuxerFactory.createDemuxer(for: url)
         log("Demuxer: \(type(of: demuxer))")
 

@@ -15,6 +15,8 @@ final class MediaLibraryViewController: UIViewController {
     private var items: [LocalMediaItem] = []
     private var collectionView: UICollectionView!
 
+    private var displayModeButton: UIBarButtonItem!
+
     init(mediaType: MediaType) {
         self.mediaType = mediaType
         super.init(nibName: nil, bundle: nil)
@@ -32,33 +34,45 @@ final class MediaLibraryViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         loadMedia()
+        updateDisplayModeButton()
+    }
+
+    private var showThumbnails: Bool {
+        return Settings.shared.showThumbnails
     }
 
     private func setupUI() {
         title = mediaType == .video ? "Video" : "Audio"
         view.backgroundColor = .systemBackground
 
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "plus"),
+        // Add button for toggling display mode
+        displayModeButton = UIBarButtonItem(
+            image: UIImage(systemName: "rectangle.grid.2x2"),
             style: .plain,
             target: self,
-            action: #selector(addMediaTapped)
+            action: #selector(toggleDisplayMode)
         )
+
+        navigationItem.rightBarButtonItems = [
+            UIBarButtonItem(
+                image: UIImage(systemName: "plus"),
+                style: .plain,
+                target: self,
+                action: #selector(addMediaTapped)
+            ),
+            displayModeButton
+        ]
 
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
-        layout.minimumInteritemSpacing = 12
-        layout.minimumLineSpacing = 12
-        layout.sectionInset = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
-
-        let itemWidth = (UIScreen.main.bounds.width - 44) / 2
-        layout.itemSize = CGSize(width: itemWidth, height: itemWidth * 0.75)
+        updateLayout(layout)
 
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = .systemBackground
         collectionView.delegate = self
         collectionView.dataSource = self
         collectionView.register(MediaItemCell.self, forCellWithReuseIdentifier: "MediaItemCell")
+        collectionView.register(IconItemCell.self, forCellWithReuseIdentifier: "IconItemCell")
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
 
@@ -68,6 +82,37 @@ final class MediaLibraryViewController: UIViewController {
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+    }
+
+    private func updateLayout(_ layout: UICollectionViewFlowLayout) {
+        layout.minimumInteritemSpacing = showThumbnails ? 12 : 8
+        layout.minimumLineSpacing = showThumbnails ? 12 : 8
+        layout.sectionInset = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+
+        if showThumbnails {
+            // Thumbnail mode: larger items
+            let itemWidth = (UIScreen.main.bounds.width - 44) / 2
+            layout.itemSize = CGSize(width: itemWidth, height: itemWidth * 0.75)
+        } else {
+            // Icon mode: smaller items, 3 columns
+            let itemWidth = (UIScreen.main.bounds.width - 56) / 3
+            layout.itemSize = CGSize(width: itemWidth, height: itemWidth * 0.85)
+        }
+    }
+
+    @objc private func toggleDisplayMode() {
+        Settings.shared.showThumbnails = !Settings.shared.showThumbnails
+        updateDisplayModeButton()
+
+        if let layout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout {
+            updateLayout(layout)
+            collectionView.reloadData()
+        }
+    }
+
+    private func updateDisplayModeButton() {
+        let imageName = showThumbnails ? "rectangle.grid.2x2" : "list.bullet"
+        displayModeButton.image = UIImage(systemName: imageName)
     }
 
     private func loadMedia() {
@@ -196,10 +241,17 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
     }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "MediaItemCell", for: indexPath) as! MediaItemCell
         let item = items[indexPath.item]
-        cell.configure(with: item, mediaType: mediaType)
-        return cell
+
+        if showThumbnails {
+            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "MediaItemCell", for: indexPath) as! MediaItemCell
+            cell.configure(with: item, mediaType: mediaType)
+            return cell
+        } else {
+            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "IconItemCell", for: indexPath) as! IconItemCell
+            cell.configure(with: item, mediaType: mediaType)
+            return cell
+        }
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -350,5 +402,56 @@ final class MediaItemCell: UICollectionViewCell {
         } else {
             detailLabel.text = nil
         }
+    }
+}
+
+// Icon mode cell - smaller, compact layout
+final class IconItemCell: UICollectionViewCell {
+    private let iconView = UIImageView()
+    private let titleLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupUI() {
+        contentView.backgroundColor = .secondarySystemBackground
+        contentView.layer.cornerRadius = 8
+        contentView.clipsToBounds = true
+
+        iconView.contentMode = .scaleAspectFit
+        iconView.tintColor = .systemGray
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(iconView)
+
+        titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        titleLabel.textColor = .label
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 2
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(titleLabel)
+
+        NSLayoutConstraint.activate([
+            iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            iconView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 32),
+            iconView.heightAnchor.constraint(equalToConstant: 32),
+
+            titleLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 4),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            titleLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -4)
+        ])
+    }
+
+    func configure(with item: LocalMediaItem, mediaType: MediaType) {
+        let iconName = mediaType == .video ? "video.fill" : "music.note"
+        iconView.image = UIImage(systemName: iconName)
+        titleLabel.text = item.name
     }
 }

@@ -37,6 +37,11 @@ final class Settings {
         set { defaults.set(newValue, forKey: Key.showNonMediaFiles) }
     }
 
+    var showThumbnails: Bool {
+        get { defaults.bool(forKey: "showThumbnails") }
+        set { defaults.set(newValue, forKey: "showThumbnails") }
+    }
+
     // MARK: - Playback
     var autoPlayNext: Bool {
         get { defaults.bool(forKey: Key.autoPlayNext) }

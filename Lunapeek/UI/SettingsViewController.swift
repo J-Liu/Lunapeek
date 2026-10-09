@@ -40,7 +40,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
-        case 0: return 3 // File Browser
+        case 0: return 4 // File Browser
         case 1: return 3 // Playback
         case 2: return 2 // Video
         case 3: return 2 // About
@@ -78,6 +78,12 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 toggle.addTarget(self, action: #selector(showNonMediaFilesChanged(_:)), for: .valueChanged)
                 cell.accessoryView = toggle
             case 2:
+                cell.textLabel?.text = "Show Thumbnails"
+                let toggle = UISwitch()
+                toggle.isOn = Settings.shared.showThumbnails
+                toggle.addTarget(self, action: #selector(showThumbnailsChanged(_:)), for: .valueChanged)
+                cell.accessoryView = toggle
+            case 3:
                 cell.textLabel?.text = "Clear Recent Servers"
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
@@ -146,7 +152,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
 
         switch indexPath.section {
         case 0:
-            if indexPath.row == 2 {
+            if indexPath.row == 3 {
                 clearRecentServers()
             }
         case 1:
@@ -175,6 +181,10 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
 
     @objc private func showNonMediaFilesChanged(_ sender: UISwitch) {
         Settings.shared.showNonMediaFiles = sender.isOn
+    }
+
+    @objc private func showThumbnailsChanged(_ sender: UISwitch) {
+        Settings.shared.showThumbnails = sender.isOn
     }
 
     @objc private func autoPlayNextChanged(_ sender: UISwitch) {
