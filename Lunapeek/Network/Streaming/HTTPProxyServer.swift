@@ -125,7 +125,8 @@ final class HTTPProxyServer: @unchecked Sendable {
         connectionsLock.unlock()
 
         for connection in connections {
-            connection.cancel()
+            // Force cancel without waiting for state handler
+            connection.forceCancel()
         }
 
         // Cancel listener
@@ -150,18 +151,6 @@ final class HTTPProxyServer: @unchecked Sendable {
         connectionsLock.unlock()
 
         connection.start(queue: queue)
-
-        // Set up state handler to remove connection when done
-        connection.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .failed, .cancelled:
-                self?.connectionsLock.lock()
-                self?.activeConnections.removeAll { $0 === connection }
-                self?.connectionsLock.unlock()
-            default:
-                break
-            }
-        }
 
         // Keep reading requests on the same connection (HTTP keep-alive)
         readNextRequest(connection: connection)
