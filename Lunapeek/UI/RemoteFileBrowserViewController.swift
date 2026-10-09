@@ -232,9 +232,20 @@ final class RemoteFileBrowserViewController: UIViewController {
                 files = []
             }
 
+            // Filter non-media files if setting is disabled
+            let filteredFiles: [RemoteFileItem]
+            if Settings.shared.showNonMediaFiles {
+                filteredFiles = files
+            } else {
+                filteredFiles = files.filter { item in
+                    if item.isDirectory { return true }
+                    return isMediaFile(item.name)
+                }
+            }
+
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                self.items = files
+                self.items = filteredFiles
                 self.collectionView.reloadData()
             }
         } catch {
@@ -249,6 +260,14 @@ final class RemoteFileBrowserViewController: UIViewController {
                 present(alert, animated: true)
             }
         }
+    }
+
+    private func isMediaFile(_ filename: String) -> Bool {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        let videoExtensions = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv", "ts", "mts", "m2ts", "wmv", "rm", "rmvb", "3gp"]
+        let audioExtensions = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma", "ape", "alac"]
+        let imageExtensions = ["jpg", "jpeg", "png", "gif", "heic", "bmp", "tiff", "webp"]
+        return videoExtensions.contains(ext) || audioExtensions.contains(ext) || imageExtensions.contains(ext)
     }
 
     private func updateToolbar() {

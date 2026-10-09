@@ -13,6 +13,7 @@ final class Settings {
     // MARK: - Keys
     private enum Key {
         static let showHiddenFiles = "showHiddenFiles"
+        static let showNonMediaFiles = "showNonMediaFiles"
         static let autoPlayNext = "autoPlayNext"
         static let backgroundPlay = "backgroundPlay"
         static let hardwareDecode = "hardwareDecode"
@@ -24,6 +25,16 @@ final class Settings {
     var showHiddenFiles: Bool {
         get { defaults.bool(forKey: Key.showHiddenFiles) }
         set { defaults.set(newValue, forKey: Key.showHiddenFiles) }
+    }
+
+    var showNonMediaFiles: Bool {
+        get {
+            if defaults.object(forKey: Key.showNonMediaFiles) == nil {
+                return false // Default: don't show non-media files
+            }
+            return defaults.bool(forKey: Key.showNonMediaFiles)
+        }
+        set { defaults.set(newValue, forKey: Key.showNonMediaFiles) }
     }
 
     // MARK: - Playback
