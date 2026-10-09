@@ -59,6 +59,7 @@ final class PlayerViewController: UIViewController {
     deinit {
         controlsHideTimer?.invalidate()
         gestureIndicatorTimer?.invalidate()
+        seekIndicatorTimer?.invalidate()
         // Clear log handler to prevent callbacks to deallocated self
         LogManager.shared.handler = nil
         // Remove observer first (safe even if player is gone)
@@ -766,6 +767,64 @@ final class PlayerViewController: UIViewController {
         let targetTime = duration * Double(progressBar.value) / 100
         let cmTime = CMTime(seconds: targetTime, preferredTimescale: 600)
         player.seek(to: cmTime)
+
+        // Show time indicator
+        let currentStr = formatTime(targetTime)
+        let durationStr = formatTime(duration)
+        showSeekIndicator(currentTime: targetTime, duration: duration)
+    }
+
+    private var seekIndicatorTimer: Timer?
+
+    private func showSeekIndicator(currentTime: Double, duration: Double) {
+        seekIndicatorTimer?.invalidate()
+
+        let currentStr = formatTime(currentTime)
+        let durationStr = formatTime(duration)
+
+        // Reuse gesture indicator view or create new
+        if gestureIndicatorView == nil {
+            let container = UIView()
+            container.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+            container.layer.cornerRadius = 12
+            container.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(container)
+            gestureIndicatorView = container
+
+            let label = UILabel()
+            label.tag = 100 // for finding later
+            label.textColor = .white
+            label.font = .systemFont(ofSize: 20, weight: .medium)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(label)
+
+            NSLayoutConstraint.activate([
+                container.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                container.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+                container.widthAnchor.constraint(equalToConstant: 120),
+                container.heightAnchor.constraint(equalToConstant: 60),
+
+                label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+            ])
+        }
+
+        // Update label
+        if let label = gestureIndicatorView?.viewWithTag(100) as? UILabel {
+            label.text = "\(currentStr) / \(durationStr)"
+        }
+
+        gestureIndicatorView?.alpha = 1
+
+        // Hide after 1 second
+        seekIndicatorTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            UIView.animate(withDuration: 0.3, animations: {
+                self?.gestureIndicatorView?.alpha = 0
+            }) { _ in
+                self?.gestureIndicatorView?.removeFromSuperview()
+                self?.gestureIndicatorView = nil
+            }
+        }
     }
 
     private func updateProgress() {
