@@ -266,8 +266,7 @@ final class RemoteFileBrowserViewController: UIViewController {
         let ext = (filename as NSString).pathExtension.lowercased()
         let videoExtensions = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv", "ts", "mts", "m2ts", "wmv", "rm", "rmvb", "3gp"]
         let audioExtensions = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma", "ape", "alac"]
-        let imageExtensions = ["jpg", "jpeg", "png", "gif", "heic", "bmp", "tiff", "webp"]
-        return videoExtensions.contains(ext) || audioExtensions.contains(ext) || imageExtensions.contains(ext)
+        return videoExtensions.contains(ext) || audioExtensions.contains(ext)
     }
 
     private func updateToolbar() {
