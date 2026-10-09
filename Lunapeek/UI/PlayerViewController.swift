@@ -21,6 +21,17 @@ final class PlayerViewController: UIViewController {
     private var progressBar: UISlider!
     private var timeLabel: UILabel!
     private var isControlsHidden = false
+    private var controlsHideTimer: Timer?
+
+    // Brightness & Volume
+    private var brightnessButton: UIButton!
+    private var volumeButton: UIButton!
+    private var brightnessSliderView: UIView?
+    private var volumeSliderView: UIView?
+
+    private var isFullscreen: Bool {
+        return view.bounds.width > view.bounds.height
+    }
 
     // Debug log view
     private var debugTextView: UITextView!
@@ -38,6 +49,7 @@ final class PlayerViewController: UIViewController {
     }
 
     deinit {
+        controlsHideTimer?.invalidate()
         // Clear log handler to prevent callbacks to deallocated self
         LogManager.shared.handler = nil
         // Remove observer first (safe even if player is gone)
@@ -104,13 +116,21 @@ final class PlayerViewController: UIViewController {
         controlView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(controlView)
 
-        // Close button
+        // Back button (top left)
+        let backButton = UIButton(type: .system)
+        backButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        backButton.tintColor = .white
+        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+        backButton.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(backButton)
+
+        // Right top button (fullscreen or close)
         closeButton = UIButton(type: .system)
-        closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
         closeButton.tintColor = .white
-        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        closeButton.addTarget(self, action: #selector(rightTopButtonTapped), for: .touchUpInside)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(closeButton)
+        updateRightTopButton()
 
         // Debug button
         let debugButton = UIButton(type: .system)
@@ -129,6 +149,19 @@ final class PlayerViewController: UIViewController {
         playButton.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(playButton)
 
+        // Bottom controls container
+        let bottomControls = UIView()
+        bottomControls.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(bottomControls)
+
+        // Brightness button
+        brightnessButton = UIButton(type: .system)
+        brightnessButton.setImage(UIImage(systemName: "sun.max"), for: .normal)
+        brightnessButton.tintColor = .white
+        brightnessButton.addTarget(self, action: #selector(brightnessTapped), for: .touchUpInside)
+        brightnessButton.translatesAutoresizingMaskIntoConstraints = false
+        bottomControls.addSubview(brightnessButton)
+
         // Progress bar
         progressBar = UISlider()
         progressBar.minimumValue = 0
@@ -137,7 +170,15 @@ final class PlayerViewController: UIViewController {
         progressBar.tintColor = .systemBlue
         progressBar.addTarget(self, action: #selector(progressChanged), for: .valueChanged)
         progressBar.translatesAutoresizingMaskIntoConstraints = false
-        controlView.addSubview(progressBar)
+        bottomControls.addSubview(progressBar)
+
+        // Volume button
+        volumeButton = UIButton(type: .system)
+        volumeButton.setImage(UIImage(systemName: "speaker.wave.2"), for: .normal)
+        volumeButton.tintColor = .white
+        volumeButton.addTarget(self, action: #selector(volumeTapped), for: .touchUpInside)
+        volumeButton.translatesAutoresizingMaskIntoConstraints = false
+        bottomControls.addSubview(volumeButton)
 
         // Time label
         timeLabel = UILabel()
@@ -145,7 +186,7 @@ final class PlayerViewController: UIViewController {
         timeLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .regular)
         timeLabel.text = "0:00 / 0:00"
         timeLabel.translatesAutoresizingMaskIntoConstraints = false
-        controlView.addSubview(timeLabel)
+        bottomControls.addSubview(timeLabel)
 
         NSLayoutConstraint.activate([
             videoView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -163,6 +204,11 @@ final class PlayerViewController: UIViewController {
             controlView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             controlView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
+            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            backButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            backButton.widthAnchor.constraint(equalToConstant: 44),
+            backButton.heightAnchor.constraint(equalToConstant: 44),
+
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 44),
@@ -178,18 +224,215 @@ final class PlayerViewController: UIViewController {
             playButton.widthAnchor.constraint(equalToConstant: 80),
             playButton.heightAnchor.constraint(equalToConstant: 80),
 
-            progressBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            progressBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            progressBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -48),
+            bottomControls.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            bottomControls.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            bottomControls.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
 
-            timeLabel.leadingAnchor.constraint(equalTo: progressBar.leadingAnchor),
-            timeLabel.topAnchor.constraint(equalTo: progressBar.bottomAnchor, constant: 8)
+            brightnessButton.leadingAnchor.constraint(equalTo: bottomControls.leadingAnchor),
+            brightnessButton.centerYAnchor.constraint(equalTo: progressBar.centerYAnchor),
+            brightnessButton.widthAnchor.constraint(equalToConstant: 44),
+            brightnessButton.heightAnchor.constraint(equalToConstant: 44),
+
+            progressBar.leadingAnchor.constraint(equalTo: brightnessButton.trailingAnchor, constant: 8),
+            progressBar.trailingAnchor.constraint(equalTo: volumeButton.leadingAnchor, constant: -8),
+            progressBar.topAnchor.constraint(equalTo: bottomControls.topAnchor),
+
+            volumeButton.trailingAnchor.constraint(equalTo: bottomControls.trailingAnchor),
+            volumeButton.centerYAnchor.constraint(equalTo: progressBar.centerYAnchor),
+            volumeButton.widthAnchor.constraint(equalToConstant: 44),
+            volumeButton.heightAnchor.constraint(equalToConstant: 44),
+
+            timeLabel.leadingAnchor.constraint(equalTo: bottomControls.leadingAnchor),
+            timeLabel.topAnchor.constraint(equalTo: progressBar.bottomAnchor, constant: 8),
+            timeLabel.bottomAnchor.constraint(equalTo: bottomControls.bottomAnchor)
         ])
+
+        // Start auto-hide timer
+        resetControlsHideTimer()
+    }
+
+    private func updateRightTopButton() {
+        if isFullscreen {
+            closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        } else {
+            closeButton.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
+        }
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            self?.updateRightTopButton()
+        }
     }
 
     @objc private func toggleDebug() {
         isDebugVisible.toggle()
         debugTextView.isHidden = !isDebugVisible
+    }
+
+    // MARK: - Auto-hide controls
+
+    private func resetControlsHideTimer() {
+        controlsHideTimer?.invalidate()
+        controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            self?.hideControls()
+        }
+    }
+
+    private func hideControls() {
+        guard !isControlsHidden else { return }
+        isControlsHidden = true
+        UIView.animate(withDuration: 0.3) {
+            self.controlView.alpha = 0
+        }
+    }
+
+    private func showControls() {
+        isControlsHidden = false
+        UIView.animate(withDuration: 0.3) {
+            self.controlView.alpha = 1
+        }
+        resetControlsHideTimer()
+    }
+
+    // MARK: - Brightness & Volume
+
+    @objc private func brightnessTapped() {
+        resetControlsHideTimer()
+        if brightnessSliderView != nil {
+            brightnessSliderView?.removeFromSuperview()
+            brightnessSliderView = nil
+            return
+        }
+
+        let sliderView = createVerticalSlider(value: Float(UIScreen.main.brightness), min: 0, max: 1) { [weak self] value in
+            UIScreen.main.brightness = CGFloat(value)
+            self?.updateBrightnessIcon(value: value)
+        }
+        sliderView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sliderView)
+        brightnessSliderView = sliderView
+
+        NSLayoutConstraint.activate([
+            sliderView.centerXAnchor.constraint(equalTo: brightnessButton.centerXAnchor),
+            sliderView.bottomAnchor.constraint(equalTo: progressBar.topAnchor, constant: -16),
+            sliderView.widthAnchor.constraint(equalToConstant: 44),
+            sliderView.heightAnchor.constraint(equalToConstant: 150)
+        ])
+
+        // Hide volume slider
+        volumeSliderView?.removeFromSuperview()
+        volumeSliderView = nil
+    }
+
+    @objc private func volumeTapped() {
+        resetControlsHideTimer()
+        if volumeSliderView != nil {
+            volumeSliderView?.removeFromSuperview()
+            volumeSliderView = nil
+            return
+        }
+
+        let session = AVAudioSession.sharedInstance()
+        let volume = session.outputVolume
+        let sliderView = createVerticalSlider(value: Float(volume), min: 0, max: 1) { [weak self] value in
+            // Note: iOS doesn't allow direct volume setting, use MPVolumeView
+            self?.updateVolumeIcon(value: value)
+        }
+        sliderView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sliderView)
+        volumeSliderView = sliderView
+
+        NSLayoutConstraint.activate([
+            sliderView.centerXAnchor.constraint(equalTo: volumeButton.centerXAnchor),
+            sliderView.bottomAnchor.constraint(equalTo: progressBar.topAnchor, constant: -16),
+            sliderView.widthAnchor.constraint(equalToConstant: 44),
+            sliderView.heightAnchor.constraint(equalToConstant: 150)
+        ])
+
+        // Hide brightness slider
+        brightnessSliderView?.removeFromSuperview()
+        brightnessSliderView = nil
+    }
+
+    private func createVerticalSlider(value: Float, min: Float, max: Float, changed: @escaping (Float) -> Void) -> UIView {
+        let container = UIView()
+        container.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        container.layer.cornerRadius = 22
+
+        let slider = UISlider()
+        slider.minimumValue = min
+        slider.maximumValue = max
+        slider.value = value
+        slider.addTarget(self, action: #selector(sliderValueChanged(_:)), for: .valueChanged)
+        slider.transform = CGAffineTransform(rotationAngle: -CGFloat.pi / 2)
+        slider.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(slider)
+
+        // Store the callback
+        objc_setAssociatedObject(slider, &sliderCallbackKey, changed, .OBJC_ASSOCIATION_COPY_NONATOMIC)
+
+        NSLayoutConstraint.activate([
+            slider.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            slider.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            slider.widthAnchor.constraint(equalTo: container.heightAnchor, constant: -20)
+        ])
+
+        return container
+    }
+
+    private var sliderCallbackKey: UInt8 = 0
+
+    @objc private func sliderValueChanged(_ slider: UISlider) {
+        if let callback = objc_getAssociatedObject(slider, &sliderCallbackKey) as? (Float) -> Void {
+            callback(slider.value)
+        }
+    }
+
+    private func updateBrightnessIcon(value: Float) {
+        let icon: String
+        switch value {
+        case 0..<0.3: icon = "sun.min"
+        case 0.3..<0.7: icon = "sun.max"
+        default: icon = "sun.max.fill"
+        }
+        brightnessButton.setImage(UIImage(systemName: icon), for: .normal)
+    }
+
+    private func updateVolumeIcon(value: Float) {
+        let icon: String
+        switch value {
+        case 0: icon = "speaker.slash"
+        case 0..<0.3: icon = "speaker.wave.1"
+        case 0.3..<0.7: icon = "speaker.wave.2"
+        default: icon = "speaker.wave.3"
+        }
+        volumeButton.setImage(UIImage(systemName: icon), for: .normal)
+    }
+
+    // MARK: - Navigation
+
+    @objc private func backTapped() {
+        resetControlsHideTimer()
+        if isFullscreen {
+            // Exit fullscreen
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        } else {
+            // Exit player
+            closeTapped()
+        }
+    }
+
+    @objc private func rightTopButtonTapped() {
+        resetControlsHideTimer()
+        if isFullscreen {
+            // Close
+            closeTapped()
+        } else {
+            // Enter fullscreen
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+        }
     }
 
     private func setupPlayer() {
@@ -299,9 +542,10 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func toggleControls() {
-        isControlsHidden.toggle()
-        UIView.animate(withDuration: 0.3) {
-            self.controlView.alpha = self.isControlsHidden ? 0 : 1
+        if isControlsHidden {
+            showControls()
+        } else {
+            hideControls()
         }
     }
 
@@ -332,6 +576,8 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func playPauseTapped() {
+        resetControlsHideTimer()
+
         // Handle AVPlayer
         if let player = avPlayer {
             if player.timeControlStatus == .playing {
