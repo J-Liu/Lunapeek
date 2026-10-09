@@ -5,6 +5,7 @@
 
 import UIKit
 import AVFoundation
+import MediaPlayer
 
 final class PlayerViewController: UIViewController {
     private let url: URL
@@ -29,6 +30,13 @@ final class PlayerViewController: UIViewController {
     private var brightnessSliderView: UIView?
     private var volumeSliderView: UIView?
 
+    // Gesture indicator
+    private var gestureIndicatorView: UIView?
+    private var gestureIndicatorTimer: Timer?
+
+    // Hidden volume view for system volume control
+    private var volumeView: MPVolumeView?
+
     private var isFullscreen: Bool {
         return view.bounds.width > view.bounds.height
     }
@@ -50,6 +58,7 @@ final class PlayerViewController: UIViewController {
 
     deinit {
         controlsHideTimer?.invalidate()
+        gestureIndicatorTimer?.invalidate()
         // Clear log handler to prevent callbacks to deallocated self
         LogManager.shared.handler = nil
         // Remove observer first (safe even if player is gone)
@@ -275,7 +284,7 @@ final class PlayerViewController: UIViewController {
 
     private func resetControlsHideTimer() {
         controlsHideTimer?.invalidate()
-        controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+        controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
             self?.hideControls()
         }
     }
@@ -539,6 +548,20 @@ final class PlayerViewController: UIViewController {
         doubleTap.numberOfTapsRequired = 2
         view.addGestureRecognizer(doubleTap)
         tap.require(toFail: doubleTap)
+
+        // Swipe gestures for brightness (left half) and volume (right half)
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
+        view.addGestureRecognizer(panGesture)
+
+        // Setup hidden volume view for system volume control
+        setupVolumeView()
+    }
+
+    private func setupVolumeView() {
+        // Create hidden volume view to control system volume
+        volumeView = MPVolumeView(frame: CGRect(x: -100, y: -100, width: 100, height: 100))
+        volumeView?.alpha = 0.01
+        view.addSubview(volumeView!)
     }
 
     @objc private func toggleControls() {
@@ -546,6 +569,117 @@ final class PlayerViewController: UIViewController {
             showControls()
         } else {
             hideControls()
+        }
+    }
+
+    // MARK: - Pan Gesture for Brightness/Volume
+
+    private var initialPanY: CGFloat = 0
+    private var isAdjustingBrightness = false
+
+    @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+        let location = gesture.location(in: view)
+        let translation = gesture.translation(in: view)
+
+        switch gesture.state {
+        case .began:
+            initialPanY = location.y
+            isAdjustingBrightness = location.x < view.bounds.width / 2
+
+        case .changed:
+            // Calculate change based on initial position
+            let deltaY = initialPanY - location.y
+            let sensitivity: CGFloat = 300 // pixels for full range
+            let change = deltaY / sensitivity
+
+            if isAdjustingBrightness {
+                let newBrightness = max(0, min(1, UIScreen.main.brightness + change * 0.1))
+                UIScreen.main.brightness = newBrightness
+                showGestureIndicator(type: .brightness, value: newBrightness)
+            } else {
+                // Volume: get current volume from slider
+                if let slider = volumeView?.subviews.first(where: { $0 is UISlider }) as? UISlider {
+                    let newVolume = max(0, min(1, slider.value + Float(change * 0.1)))
+                    slider.value = newVolume
+                    showGestureIndicator(type: .volume, value: CGFloat(newVolume))
+                }
+            }
+
+            // Update initial for next iteration
+            initialPanY = location.y
+
+        case .ended, .cancelled:
+            // Keep indicator visible for a moment then hide
+            break
+
+        default:
+            break
+        }
+    }
+
+    private enum GestureIndicatorType {
+        case brightness
+        case volume
+    }
+
+    private func showGestureIndicator(type: GestureIndicatorType, value: CGFloat) {
+        // Remove existing indicator
+        gestureIndicatorView?.removeFromSuperview()
+        gestureIndicatorTimer?.invalidate()
+
+        let container = UIView()
+        container.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        container.layer.cornerRadius = 12
+        container.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(container)
+
+        let icon = UIImageView()
+        let iconName: String
+        switch type {
+        case .brightness:
+            iconName = value < 0.3 ? "sun.min" : (value < 0.7 ? "sun.max" : "sun.max.fill")
+        case .volume:
+            iconName = value < 0.01 ? "speaker.slash" : (value < 0.3 ? "speaker.wave.1" : (value < 0.7 ? "speaker.wave.2" : "speaker.wave.3"))
+        }
+        icon.image = UIImage(systemName: iconName)
+        icon.tintColor = .white
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(icon)
+
+        let label = UILabel()
+        label.text = "\(Int(value * 100))%"
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            container.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            container.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            container.widthAnchor.constraint(equalToConstant: 80),
+            container.heightAnchor.constraint(equalToConstant: 80),
+
+            icon.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            icon.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 28),
+            icon.heightAnchor.constraint(equalToConstant: 28),
+
+            label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 8),
+            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
+        ])
+
+        gestureIndicatorView = container
+
+        // Hide after 1 second
+        gestureIndicatorTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            UIView.animate(withDuration: 0.3, animations: {
+                self?.gestureIndicatorView?.alpha = 0
+            }) { _ in
+                self?.gestureIndicatorView?.removeFromSuperview()
+                self?.gestureIndicatorView = nil
+            }
         }
     }
 
