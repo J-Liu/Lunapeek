@@ -1165,6 +1165,9 @@ final class PlayerViewController: UIViewController {
 
         // Update progress initially
         updateProgress()
+
+        // Start Live Activity for Dynamic Island
+        startLiveActivity()
     }
 
     @objc private func playerDidFinishPlaying() {
@@ -1291,18 +1294,34 @@ final class PlayerViewController: UIViewController {
     // MARK: - Live Activity
 
     private func startLiveActivity() {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            log("📱 Live Activities not enabled")
+        log("📱 Trying to start Live Activity...")
+
+        // Check if Live Activities are enabled
+        let authInfo = ActivityAuthorizationInfo()
+        log("📱 Live Activities enabled: \(authInfo.areActivitiesEnabled)")
+
+        guard authInfo.areActivitiesEnabled else {
+            log("📱 Live Activities not enabled in settings")
             return
         }
 
         let attributes = LunapeekWidgetAttributes(name: "Lunapeek")
 
-        guard let player = avQueuePlayer, let currentItem = player.currentItem else { return }
+        guard let player = avQueuePlayer, let currentItem = player.currentItem else {
+            log("📱 No player or current item")
+            return
+        }
 
         let currentUrl = url
         let title = currentUrl.deletingPathExtension().lastPathComponent
-        let duration = currentItem.duration.seconds
+
+        // Wait for duration to be available
+        var duration = currentItem.duration.seconds
+        if duration <= 0 || duration.isNaN {
+            duration = 60.0  // Default duration if not loaded yet
+            log("📱 Duration not loaded yet, using default: \(duration)")
+        }
+
         let isVideo = currentUrl.pathExtension.lowercased() != "mp3" && currentUrl.pathExtension.lowercased() != "m4a"
 
         // Get file size
@@ -1329,9 +1348,9 @@ final class PlayerViewController: UIViewController {
                 pushType: nil
             )
             currentActivity = activity
-            log("📱 Live Activity started: \(activity.id)")
+            log("📱 Live Activity started successfully: \(activity.id)")
         } catch {
-            log("📱 Failed to start Live Activity: \(error)")
+            log("📱 Failed to start Live Activity: \(error.localizedDescription)")
         }
     }
 
