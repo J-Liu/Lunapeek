@@ -26,17 +26,40 @@ extension Bundle {
             let bundle = Bundle(path: Bundle.main.path(forResource: lang, ofType: "lproj") ?? "")
             objc_setAssociatedObject(Bundle.main, &bundleKey, bundle, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         } else {
-            // System language - get actual system language and set it
-            let systemLanguage = Locale.preferredLanguages.first?.components(separatedBy: "-").first ?? "en"
-            UserDefaults.standard.set([systemLanguage], forKey: "AppleLanguages")
-            UserDefaults.standard.removeObject(forKey: "AppleTextDirection")
+            // System language - get actual system language and map to supported language
+            let systemLanguage = Locale.preferredLanguages.first ?? "en"
+            let supportedLanguage = mapSystemLanguage(systemLanguage)
+            let isLanguageRTL = isRTL(language: supportedLanguage)
+
+            UserDefaults.standard.set([supportedLanguage], forKey: "AppleLanguages")
+            UserDefaults.standard.set(isLanguageRTL, forKey: "AppleTextDirection")
             UserDefaults.standard.synchronize()
 
             // Set the system language bundle
             object_setClass(Bundle.main, BundleEx.self)
-            let bundle = Bundle(path: Bundle.main.path(forResource: systemLanguage, ofType: "lproj") ?? "")
+            let bundle = Bundle(path: Bundle.main.path(forResource: supportedLanguage, ofType: "lproj") ?? "")
             objc_setAssociatedObject(Bundle.main, &bundleKey, bundle, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
+    }
+
+    /// Map system language to our supported language codes
+    static func mapSystemLanguage(_ language: String) -> String {
+        // Handle Chinese variants
+        if language.hasPrefix("zh-Hans") || language == "zh-CN" {
+            return "zh-Hans"
+        }
+        if language.hasPrefix("zh-Hant") || language == "zh-TW" || language == "zh-HK" || language == "zh-MO" {
+            return "zh-Hant"
+        }
+        // Handle other languages - extract base language code
+        let baseLanguage = language.components(separatedBy: "-").first ?? language
+        // Check if we have a localization for this language
+        let availableLocalizations = Bundle.main.localizations
+        if availableLocalizations.contains(baseLanguage) {
+            return baseLanguage
+        }
+        // Default to English if not supported
+        return "en"
     }
 
     static func isRTL(language: String?) -> Bool {
@@ -45,7 +68,7 @@ extension Bundle {
     }
 }
 
-private class BundleEx: Bundle {
+private class BundleEx: Bundle, @unchecked Sendable {
     override func localizedString(forKey key: String, value: String?, table tableName: String?) -> String {
         if let bundle = objc_getAssociatedObject(self, &bundleKey) as? Bundle {
             return bundle.localizedString(forKey: key, value: value, table: tableName)
