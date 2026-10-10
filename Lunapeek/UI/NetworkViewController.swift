@@ -143,7 +143,7 @@ final class NetworkViewController: UIViewController {
     }
 
     @objc private func addManual() {
-        let alert = UIAlertController(title: "Add Server", message: nil, preferredStyle: .actionSheet)
+        let alert = UIAlertController(title: NSLocalizedString("Add Server", comment: ""), message: nil, preferredStyle: .actionSheet)
 
         alert.addAction(UIAlertAction(title: "SMB/CIFS", style: .default) { [weak self] _ in
             self?.showManualConfig(type: .smb)
@@ -157,7 +157,7 @@ final class NetworkViewController: UIViewController {
             self?.showManualConfig(type: .webdav)
         })
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
 
         if let popover = alert.popoverPresentationController {
             popover.barButtonItem = navigationItem.leftBarButtonItem
@@ -218,7 +218,7 @@ final class NetworkViewController: UIViewController {
             )
         })
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
         present(alert, animated: true)
     }
 
@@ -286,7 +286,7 @@ final class NetworkViewController: UIViewController {
             )
         })
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
         present(alert, animated: true)
     }
 
@@ -423,7 +423,7 @@ final class NetworkViewController: UIViewController {
             })
         }
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
 
         if let popover = alert.popoverPresentationController {
             popover.sourceView = view

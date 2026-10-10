@@ -4,6 +4,9 @@
 "Network" = "Network";
 "Settings" = "Settings";
 "Playlist" = "Playlist";
+"File Browser" = "File Browser";
+"Playback" = "Playback";
+"About" = "About";
 
 /* File Browser */
 "Show Hidden Files" = "Show Hidden Files";

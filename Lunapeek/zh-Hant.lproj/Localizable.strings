@@ -4,6 +4,9 @@
 "Network" = "網路";
 "Settings" = "設定";
 "Playlist" = "播放清單";
+"File Browser" = "檔案瀏覽器";
+"Playback" = "播放";
+"About" = "關於";
 
 /* File Browser */
 "Show Hidden Files" = "顯示隱藏檔案";

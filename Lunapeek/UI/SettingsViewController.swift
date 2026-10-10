@@ -239,7 +239,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 onSelect(index)
             })
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
         present(alert, animated: true)
     }
 

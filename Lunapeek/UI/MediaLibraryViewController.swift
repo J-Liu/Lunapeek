@@ -264,12 +264,12 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
         let files = selectedItems.map { items[$0.item] }
 
         let alert = UIAlertController(
-            title: "Delete \(files.count) item(s)?",
+            title: String(format: NSLocalizedString("Delete %d items?", comment: ""), files.count),
             message: nil,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { [weak self] _ in
             for file in files {
                 try? FileManager.default.removeItem(at: file.url)
             }
@@ -346,9 +346,12 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
             self?.showFilePicker()
         })
 
-        alert.addAction(UIAlertAction(title: NSLocalizedString("Import from Photos", comment: ""), style: .default) { [weak self] _ in
-            self?.showPhotoPicker()
-        })
+        // Only show Photos import for video, not audio
+        if mediaType == .video {
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Import from Photos", comment: ""), style: .default) { [weak self] _ in
+                self?.showPhotoPicker()
+            })
+        }
 
         alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
 
@@ -828,12 +831,12 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
     }
 
     private func renameItem(_ item: LocalMediaItem) {
-        let alert = UIAlertController(title: "Rename", message: nil, preferredStyle: .alert)
+        let alert = UIAlertController(title: NSLocalizedString("Rename", comment: ""), message: nil, preferredStyle: .alert)
         alert.addTextField { textField in
             textField.text = item.name
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Rename", comment: ""), style: .default) { [weak self] _ in
             guard let newName = alert.textFields?.first?.text, !newName.isEmpty else { return }
             self?.performRename(item: item, newName: newName)
         })
@@ -898,12 +901,12 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
 
     private func confirmDelete(item: LocalMediaItem) {
         let alert = UIAlertController(
-            title: "Delete File?",
+            title: NSLocalizedString("Confirm Delete", comment: ""),
             message: item.name,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { [weak self] _ in
             self?.delete(item: item)
         })
         present(alert, animated: true)
