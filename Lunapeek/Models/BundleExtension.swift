@@ -26,13 +26,16 @@ extension Bundle {
             let bundle = Bundle(path: Bundle.main.path(forResource: lang, ofType: "lproj") ?? "")
             objc_setAssociatedObject(Bundle.main, &bundleKey, bundle, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         } else {
-            // System language - clear custom bundle and AppleLanguages
-            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            // System language - get actual system language and set it
+            let systemLanguage = Locale.preferredLanguages.first?.components(separatedBy: "-").first ?? "en"
+            UserDefaults.standard.set([systemLanguage], forKey: "AppleLanguages")
             UserDefaults.standard.removeObject(forKey: "AppleTextDirection")
             UserDefaults.standard.synchronize()
 
-            // Clear the associated bundle to use system default
-            objc_setAssociatedObject(Bundle.main, &bundleKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+            // Set the system language bundle
+            object_setClass(Bundle.main, BundleEx.self)
+            let bundle = Bundle(path: Bundle.main.path(forResource: systemLanguage, ofType: "lproj") ?? "")
+            objc_setAssociatedObject(Bundle.main, &bundleKey, bundle, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 
