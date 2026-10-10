@@ -170,22 +170,24 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
 
         switch indexPath.section {
         case 0:
+            showLanguagePicker()
+        case 1:
             if indexPath.row == 3 {
                 clearRecentServers()
-            }
-        case 1:
-            if indexPath.row == 1 {
-                showRepeatModePicker()
-            } else if indexPath.row == 3 {
-                showExitBehaviorPicker()
             }
         case 2:
             if indexPath.row == 0 {
                 showAspectRatioPicker()
             }
         case 3:
-            showLanguagePicker()
+            break // Audio section - toggle only
         case 4:
+            if indexPath.row == 0 {
+                showRepeatModePicker()
+            } else if indexPath.row == 2 {
+                showExitBehaviorPicker()
+            }
+        case 5:
             if indexPath.row == 1 {
                 showLicense()
             }
