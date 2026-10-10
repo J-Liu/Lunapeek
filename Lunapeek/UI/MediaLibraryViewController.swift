@@ -62,6 +62,17 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageDidChange),
+            name: .languageChanged,
+            object: nil
+        )
+    }
+
+    @objc private func languageDidChange() {
+        collectionView.reloadData()
     }
 
     override func viewDidLayoutSubviews() {

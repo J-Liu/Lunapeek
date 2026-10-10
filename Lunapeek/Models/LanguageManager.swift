@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright 2026 Jia Liu
+// Licensed under AGPL-3.0-or-later with an additional permission
+// under Section 7. See LICENSE for details.
+
+import Foundation
+import UIKit
+
+enum Language: String, CaseIterable {
+    case system = "system"
+    case english = "en"
+    case simplifiedChinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
+
+    var displayName: String {
+        switch self {
+        case .system:
+            return "System"
+        case .english:
+            return "English"
+        case .simplifiedChinese:
+            return "简体中文"
+        case .traditionalChinese:
+            return "繁體中文"
+        }
+    }
+
+    var locale: Locale? {
+        switch self {
+        case .system:
+            return nil
+        case .english:
+            return Locale(identifier: "en")
+        case .simplifiedChinese:
+            return Locale(identifier: "zh-Hans")
+        case .traditionalChinese:
+            return Locale(identifier: "zh-Hant")
+        }
+    }
+}
+
+final class LanguageManager {
+    static let shared = LanguageManager()
+
+    private init() {}
+
+    func applyLanguage(_ language: Language) {
+        if let locale = language.locale {
+            UserDefaults.standard.set([locale.identifier], forKey: "AppleLanguages")
+            UserDefaults.standard.synchronize()
+        } else {
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            UserDefaults.standard.synchronize()
+        }
+
+        NotificationCenter.default.post(name: .languageChanged, object: nil)
+    }
+
+    var currentLanguage: Language {
+        let stored = UserDefaults.standard.string(forKey: "language") ?? "system"
+        return Language(rawValue: stored) ?? .system
+    }
+}
+
+extension Notification.Name {
+    static let languageChanged = Notification.Name("languageChanged")
+}
+
+func L(_ key: String) -> String {
+    return NSLocalizedString(key, comment: "")
+}

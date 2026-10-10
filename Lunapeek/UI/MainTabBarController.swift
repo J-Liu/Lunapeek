@@ -9,6 +9,17 @@ final class MainTabBarController: UITabBarController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupTabs()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageDidChange),
+            name: .languageChanged,
+            object: nil
+        )
+    }
+
+    @objc private func languageDidChange() {
+        setupTabs()
     }
 
     private func setupTabs() {

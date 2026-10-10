@@ -12,7 +12,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Don't configure audio session on launch - only when playback starts
         // This prevents interrupting other audio apps (like TikTok, music players)
+
+        // Listen for language changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageDidChange),
+            name: .languageChanged,
+            object: nil
+        )
+
         return true
+    }
+
+    @objc private func languageDidChange() {
+        // Trigger UI refresh by updating the key window's root
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else { return }
+
+        // Animate the transition
+        UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve) {
+            // Just triggering layout refresh
+            window.rootViewController?.view.setNeedsLayout()
+            window.rootViewController?.view.layoutIfNeeded()
+        }
     }
 
     // MARK: UISceneSession Lifecycle

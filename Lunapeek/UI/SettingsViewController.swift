@@ -35,7 +35,7 @@ final class SettingsViewController: UIViewController {
 
 extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
     func numberOfSections(in tableView: UITableView) -> Int {
-        return 4
+        return 5
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -43,7 +43,8 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 0: return 4 // File Browser
         case 1: return 4 // Playback
         case 2: return 1 // Video (only aspect ratio now)
-        case 3: return 2 // About
+        case 3: return 1 // Language
+        case 4: return 2 // About
         default: return 0
         }
     }
@@ -53,7 +54,8 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 0: return "File Browser"
         case 1: return "Playback"
         case 2: return "Video"
-        case 3: return "About"
+        case 3: return "Language"
+        case 4: return "About"
         default: return nil
         }
     }
@@ -127,7 +129,13 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             default: break
             }
 
-        case 3: // About
+        case 3: // Language
+            cell.textLabel?.text = "Language"
+            cell.detailTextLabel?.text = Settings.shared.language.displayName
+            cell.selectionStyle = .default
+            cell.accessoryType = .disclosureIndicator
+
+        case 4: // About
             switch indexPath.row {
             case 0:
                 cell.textLabel?.text = "Version"
@@ -166,6 +174,8 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 showAspectRatioPicker()
             }
         case 3:
+            showLanguagePicker()
+        case 4:
             if indexPath.row == 1 {
                 showLicense()
             }
@@ -243,6 +253,15 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         let selectedIndex = AspectRatio.allCases.firstIndex(of: Settings.shared.defaultAspectRatio) ?? 0
         showPicker(title: "Default Aspect Ratio", items: items, selectedIndex: selectedIndex) { index in
             Settings.shared.defaultAspectRatio = AspectRatio.allCases[index]
+            self.tableView.reloadData()
+        }
+    }
+
+    private func showLanguagePicker() {
+        let items = Language.allCases.map { $0.displayName }
+        let selectedIndex = Language.allCases.firstIndex(of: Settings.shared.language) ?? 0
+        showPicker(title: "Language", items: items, selectedIndex: selectedIndex) { index in
+            Settings.shared.language = Language.allCases[index]
             self.tableView.reloadData()
         }
     }

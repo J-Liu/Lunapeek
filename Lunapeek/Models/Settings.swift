@@ -20,6 +20,16 @@ final class Settings {
         static let defaultAspectRatio = "defaultAspectRatio"
         static let repeatMode = "repeatMode"
         static let exitBehavior = "exitBehavior"
+        static let language = "language"
+    }
+
+    // MARK: - Language
+    var language: Language {
+        get { Language(rawValue: defaults.string(forKey: Key.language) ?? "system") ?? .system }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.language)
+            LanguageManager.shared.applyLanguage(newValue)
+        }
     }
 
     // MARK: - File Browser
