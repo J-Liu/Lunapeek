@@ -45,13 +45,12 @@ final class LanguageManager {
     private init() {}
 
     func applyLanguage(_ language: Language) {
-        if let locale = language.locale {
-            UserDefaults.standard.set([locale.identifier], forKey: "AppleLanguages")
-            UserDefaults.standard.synchronize()
-        } else {
-            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
-            UserDefaults.standard.synchronize()
-        }
+        // Save language preference
+        UserDefaults.standard.set(language.rawValue, forKey: "language")
+        UserDefaults.standard.synchronize()
+
+        // Apply language using Bundle extension for real-time switching
+        Bundle.setLanguage(language.locale?.identifier)
 
         NotificationCenter.default.post(name: .languageChanged, object: nil)
     }
