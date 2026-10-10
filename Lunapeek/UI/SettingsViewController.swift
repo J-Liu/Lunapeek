@@ -11,16 +11,9 @@ final class SettingsViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(languageDidChange),
-            name: .languageChanged,
-            object: nil
-        )
     }
 
-    @objc func languageDidChange() {
+    func languageDidChange() {
         title = NSLocalizedString("Settings", comment: "")
         tableView.reloadData()
     }

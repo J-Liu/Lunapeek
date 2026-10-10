@@ -33,16 +33,9 @@ final class NetworkViewController: UIViewController {
         setupUI()
         loadSavedServers()
         startDiscovery()
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(languageDidChange),
-            name: .languageChanged,
-            object: nil
-        )
     }
 
-    @objc func languageDidChange() {
+    func languageDidChange() {
         title = NSLocalizedString("Network", comment: "")
         tableView.reloadData()
     }
