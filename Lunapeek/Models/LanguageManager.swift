@@ -28,13 +28,29 @@ enum Language: String, CaseIterable {
     var locale: Locale? {
         switch self {
         case .system:
-            return nil
+            // Get actual system language
+            let systemLang = Locale.preferredLanguages.first ?? "en"
+            return Locale(identifier: systemLang)
         case .english:
             return Locale(identifier: "en")
         case .simplifiedChinese:
             return Locale(identifier: "zh-Hans")
         case .traditionalChinese:
             return Locale(identifier: "zh-Hant")
+        }
+    }
+
+    /// Returns the language code for bundle switching
+    var languageCode: String? {
+        switch self {
+        case .system:
+            return nil  // Use system default
+        case .english:
+            return "en"
+        case .simplifiedChinese:
+            return "zh-Hans"
+        case .traditionalChinese:
+            return "zh-Hant"
         }
     }
 }
@@ -50,7 +66,7 @@ final class LanguageManager {
         UserDefaults.standard.synchronize()
 
         // Apply language using Bundle extension for real-time switching
-        Bundle.setLanguage(language.locale?.identifier)
+        Bundle.setLanguage(language.languageCode)
 
         NotificationCenter.default.post(name: .languageChanged, object: nil)
     }

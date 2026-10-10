@@ -1148,6 +1148,7 @@ final class MediaItemCell: UICollectionViewCell {
 
         if let modified = item.modified {
             let formatter = DateFormatter()
+            formatter.locale = LanguageManager.shared.currentLanguage.locale
             formatter.dateStyle = .short
             formatter.timeStyle = .none
             detailLabel.text = formatter.string(from: modified)
