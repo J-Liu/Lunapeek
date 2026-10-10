@@ -15,9 +15,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // Initialize language
         let language = LanguageManager.shared.currentLanguage
-        if language != .system {
-            Bundle.setLanguage(language.locale?.identifier)
-        }
+        Bundle.setLanguage(language.locale?.identifier)
 
         // Listen for language changes
         NotificationCenter.default.addObserver(

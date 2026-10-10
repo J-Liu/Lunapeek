@@ -14,13 +14,26 @@ extension Bundle {
 
     static func setLanguage(_ language: String?) {
         Bundle.once
-        let isLanguageRTL = isRTL(language: language)
-        UserDefaults.standard.set([language ?? "system"], forKey: "AppleLanguages")
-        UserDefaults.standard.set(isLanguageRTL, forKey: "AppleTextDirection")
-        UserDefaults.standard.synchronize()
 
-        object_setClass(Bundle.main, BundleEx.self)
-        objc_setAssociatedObject(Bundle.main, &bundleKey, language.flatMap { Bundle(path: Bundle.main.path(forResource: $0, ofType: "lproj") ?? "") }, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        if let lang = language {
+            // Specific language selected
+            let isLanguageRTL = isRTL(language: lang)
+            UserDefaults.standard.set([lang], forKey: "AppleLanguages")
+            UserDefaults.standard.set(isLanguageRTL, forKey: "AppleTextDirection")
+            UserDefaults.standard.synchronize()
+
+            object_setClass(Bundle.main, BundleEx.self)
+            let bundle = Bundle(path: Bundle.main.path(forResource: lang, ofType: "lproj") ?? "")
+            objc_setAssociatedObject(Bundle.main, &bundleKey, bundle, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        } else {
+            // System language - clear custom bundle and AppleLanguages
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            UserDefaults.standard.removeObject(forKey: "AppleTextDirection")
+            UserDefaults.standard.synchronize()
+
+            // Clear the associated bundle to use system default
+            objc_setAssociatedObject(Bundle.main, &bundleKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
     }
 
     static func isRTL(language: String?) -> Bool {
