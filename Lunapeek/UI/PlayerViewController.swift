@@ -7,6 +7,8 @@ import UIKit
 import AVFoundation
 import AVKit
 import MediaPlayer
+import ActivityKit
+import ActivityKit
 
 final class PlayerViewController: UIViewController {
     private let url: URL
@@ -17,6 +19,9 @@ final class PlayerViewController: UIViewController {
     private var proxyServer: HTTPProxyServer?
     private var timeObserver: Any?
     private var videoView: UIView!
+
+    // Live Activity
+    private var currentActivity: Activity<LunapeekWidgetAttributes>?
 
     private var controlView: UIView!
     private var playButton: UIButton!
@@ -998,6 +1003,9 @@ final class PlayerViewController: UIViewController {
         // Update progress and now playing info for Dynamic Island
         updateProgress()
         updateNowPlayingInfo()
+
+        // Start Live Activity for Dynamic Island
+        startLiveActivity()
     }
 
     // MARK: - Navigation
@@ -1278,6 +1286,108 @@ final class PlayerViewController: UIViewController {
         } catch {
             print("Failed to activate audio session: \(error)")
         }
+    }
+
+    // MARK: - Live Activity
+
+    private func startLiveActivity() {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            log("📱 Live Activities not enabled")
+            return
+        }
+
+        let attributes = LunapeekWidgetAttributes(name: "Lunapeek")
+
+        guard let player = avQueuePlayer, let currentItem = player.currentItem else { return }
+
+        let currentUrl = url
+        let title = currentUrl.deletingPathExtension().lastPathComponent
+        let duration = currentItem.duration.seconds
+        let isVideo = currentUrl.pathExtension.lowercased() != "mp3" && currentUrl.pathExtension.lowercased() != "m4a"
+
+        // Get file size
+        var fileSize = "Unknown"
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: currentUrl.path),
+           let size = attrs[.size] as? Int64 {
+            fileSize = formatFileSize(size)
+        }
+
+        let initialState = LunapeekWidgetAttributes.ContentState(
+            title: title,
+            duration: duration,
+            currentTime: 0,
+            isPlaying: true,
+            fileSize: fileSize,
+            isVideo: isVideo,
+            thumbnailData: nil
+        )
+
+        do {
+            let activity = try Activity.request(
+                attributes: attributes,
+                content: .init(state: initialState, staleDate: nil),
+                pushType: nil
+            )
+            currentActivity = activity
+            log("📱 Live Activity started: \(activity.id)")
+        } catch {
+            log("📱 Failed to start Live Activity: \(error)")
+        }
+    }
+
+    private func updateLiveActivity() {
+        guard let activity = currentActivity,
+              let player = avQueuePlayer,
+              let currentItem = player.currentItem else { return }
+
+        let currentTime = player.currentTime().seconds
+        let duration = currentItem.duration.seconds
+        let isPlaying = player.timeControlStatus == .playing
+
+        let state = LunapeekWidgetAttributes.ContentState(
+            title: url.deletingPathExtension().lastPathComponent,
+            duration: duration,
+            currentTime: currentTime,
+            isPlaying: isPlaying,
+            fileSize: "Unknown",
+            isVideo: true,
+            thumbnailData: nil
+        )
+
+        Task {
+            await activity.update(
+                ActivityContent(state: state, staleDate: nil)
+            )
+        }
+    }
+
+    private func endLiveActivity() {
+        guard let activity = currentActivity else { return }
+
+        let finalState = LunapeekWidgetAttributes.ContentState(
+            title: "Finished",
+            duration: 0,
+            currentTime: 0,
+            isPlaying: false,
+            fileSize: "",
+            isVideo: false,
+            thumbnailData: nil
+        )
+
+        Task {
+            await activity.end(
+                ActivityContent(state: finalState, staleDate: nil),
+                dismissalPolicy: .immediate
+            )
+        }
+        currentActivity = nil
+    }
+
+    private func formatFileSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 
     private func setupRemoteControls() {
@@ -1613,6 +1723,9 @@ final class PlayerViewController: UIViewController {
     }
 
     private func cleanupAndDismiss() {
+        // End Live Activity
+        endLiveActivity()
+
         if let observer = timeObserver {
             avQueuePlayer?.removeTimeObserver(observer)
             timeObserver = nil
@@ -1713,6 +1826,9 @@ final class PlayerViewController: UIViewController {
 
             // Update now playing info for Dynamic Island
             updateNowPlayingInfo()
+
+            // Update Live Activity
+            updateLiveActivity()
         }
     }
 
