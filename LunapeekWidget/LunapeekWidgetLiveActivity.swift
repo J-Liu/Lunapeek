@@ -76,7 +76,7 @@ struct LunapeekWidgetLiveActivity: Widget {
 
                                 Capsule()
                                     .fill(Color.green)
-                                    .frame(width: geo.size.width * CGFloat(context.state.currentTime / context.state.duration), height: 6)
+                                    .frame(width: geo.size.width * CGFloat(context.state.currentTime / max(context.state.duration, 1)), height: 6)
                             }
                         }
                         .frame(height: 6)
@@ -92,12 +92,12 @@ struct LunapeekWidgetLiveActivity: Widget {
                                 .foregroundColor(.gray)
                         }
 
-                        // Control buttons
-                        HStack(spacing: 30) {
+                        // Control buttons - centered
+                        HStack(spacing: 40) {
                             // Fast backward
                             Button(intent: FastBackwardIntent()) {
                                 Image(systemName: "gobackward.10")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 22))
                                     .foregroundColor(.white)
                             }
                             .buttonStyle(.plain)
@@ -105,7 +105,7 @@ struct LunapeekWidgetLiveActivity: Widget {
                             // Play/Pause
                             Button(intent: PlayPauseIntent()) {
                                 Image(systemName: context.state.isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 30))
+                                    .font(.system(size: 32))
                                     .foregroundColor(.white)
                             }
                             .buttonStyle(.plain)
@@ -113,16 +113,8 @@ struct LunapeekWidgetLiveActivity: Widget {
                             // Fast forward
                             Button(intent: FastForwardIntent()) {
                                 Image(systemName: "goforward.10")
-                                    .font(.system(size: 20))
+                                    .font(.system(size: 22))
                                     .foregroundColor(.white)
-                            }
-                            .buttonStyle(.plain)
-
-                            // Route picker
-                            Button(intent: RoutePickerIntent()) {
-                                Image(systemName: "airplayaudio")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(.gray)
                             }
                             .buttonStyle(.plain)
                         }
@@ -131,17 +123,12 @@ struct LunapeekWidgetLiveActivity: Widget {
                     .padding(.horizontal, 8)
                 }
             } compactLeading: {
-                // Compact leading - show thumbnail or icon
-                if context.state.isVideo, let data = context.state.thumbnailData, let uiImage = UIImage(data: data) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 24, height: 24)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                } else {
-                    Image(systemName: "music.note")
-                        .foregroundColor(.green)
-                }
+                // Compact leading - show title
+                Text(context.state.title)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
             } compactTrailing: {
                 // Compact trailing - show time
                 Text(formatTime(context.state.currentTime))
@@ -215,7 +202,7 @@ struct LockScreenView: View {
 
                         Capsule()
                             .fill(Color.green)
-                            .frame(width: geo.size.width * CGFloat(state.currentTime / state.duration), height: 6)
+                            .frame(width: geo.size.width * CGFloat(state.currentTime / max(state.duration, 1)), height: 6)
                     }
                 }
                 .frame(height: 6)
@@ -231,41 +218,41 @@ struct LockScreenView: View {
                 }
             }
 
-            // Bottom: control buttons
-            HStack(spacing: 40) {
-                // Fast backward
+            // Bottom: control buttons - centered with play/pause in center
+            HStack(spacing: 0) {
+                Spacer()
+
+                // Fast backward (smaller)
                 Button(intent: FastBackwardIntent()) {
                     Image(systemName: "gobackward.10")
-                        .font(.system(size: 22))
-                        .foregroundColor(.white)
-                }
-                .buttonStyle(.plain)
-
-                // Play/Pause (larger)
-                Button(intent: PlayPauseIntent()) {
-                    Image(systemName: state.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 44))
-                        .foregroundColor(.white)
-                }
-                .buttonStyle(.plain)
-
-                // Fast forward
-                Button(intent: FastForwardIntent()) {
-                    Image(systemName: "goforward.10")
-                        .font(.system(size: 22))
+                        .font(.system(size: 24))
                         .foregroundColor(.white)
                 }
                 .buttonStyle(.plain)
 
                 Spacer()
+                    .frame(width: 32)
 
-                // Route picker
-                Button(intent: RoutePickerIntent()) {
-                    Image(systemName: "airplayaudio")
-                        .font(.system(size: 20))
-                        .foregroundColor(.gray)
+                // Play/Pause (larger, center)
+                Button(intent: PlayPauseIntent()) {
+                    Image(systemName: state.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 52))
+                        .foregroundColor(.white)
                 }
                 .buttonStyle(.plain)
+
+                Spacer()
+                    .frame(width: 32)
+
+                // Fast forward (smaller)
+                Button(intent: FastForwardIntent()) {
+                    Image(systemName: "goforward.10")
+                        .font(.system(size: 24))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
             }
         }
         .padding(16)
@@ -280,18 +267,18 @@ struct LockScreenView: View {
 }
 
 // App Intents for buttons
-
 struct PlayPauseIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Play/Pause"
+    static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
-        // This will be handled by the main app via notification
         return .result()
     }
 }
 
 struct FastForwardIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Fast Forward"
+    static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
         return .result()
@@ -300,6 +287,7 @@ struct FastForwardIntent: LiveActivityIntent {
 
 struct FastBackwardIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Fast Backward"
+    static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
         return .result()
@@ -308,6 +296,7 @@ struct FastBackwardIntent: LiveActivityIntent {
 
 struct RoutePickerIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Route Picker"
+    static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
         return .result()
