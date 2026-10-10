@@ -680,7 +680,7 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
         var details: [String] = []
         details.append(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))
         if let modified = item.modified {
-            let formatter = DateFormatter()
+            let formatter = makeDateFormatter()
             formatter.dateStyle = .medium
             formatter.timeStyle = .short
             details.append(formatter.string(from: modified))
@@ -910,7 +910,7 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
         info += "Size: \(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))\n"
 
         if let modified = item.modified {
-            let formatter = DateFormatter()
+            let formatter = makeDateFormatter()
             formatter.dateStyle = .full
             formatter.timeStyle = .long
             info += "Modified: \(formatter.string(from: modified))"
@@ -1147,8 +1147,7 @@ final class MediaItemCell: UICollectionViewCell {
         thumbnailView.contentMode = .scaleAspectFill
 
         if let modified = item.modified {
-            let formatter = DateFormatter()
-            formatter.locale = LanguageManager.shared.currentLanguage.locale
+            let formatter = makeDateFormatter()
             formatter.dateStyle = .short
             formatter.timeStyle = .none
             detailLabel.text = formatter.string(from: modified)
@@ -1404,7 +1403,7 @@ final class ListItemCell: UICollectionViewCell {
         var details: [String] = []
         details.append(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))
         if let modified = item.modified {
-            let formatter = DateFormatter()
+            let formatter = makeDateFormatter()
             formatter.dateStyle = .short
             formatter.timeStyle = .none
             details.append(formatter.string(from: modified))

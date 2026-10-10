@@ -84,3 +84,10 @@ extension Notification.Name {
 func L(_ key: String) -> String {
     return NSLocalizedString(key, comment: "")
 }
+
+/// Create a DateFormatter with current language locale
+func makeDateFormatter() -> DateFormatter {
+    let formatter = DateFormatter()
+    formatter.locale = LanguageManager.shared.currentLanguage.locale
+    return formatter
+}

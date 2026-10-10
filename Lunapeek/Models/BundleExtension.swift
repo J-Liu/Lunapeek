@@ -15,25 +15,24 @@ extension Bundle {
     static func setLanguage(_ language: String?) {
         Bundle.once
 
-        // Determine the actual language to use
-        let targetLanguage: String
         if let lang = language {
-            targetLanguage = lang
+            // Specific language selected - use custom bundle
+            let bundle = Bundle(path: Bundle.main.path(forResource: lang, ofType: "lproj") ?? "")
+            objc_setAssociatedObject(Bundle.main, &bundleKey, bundle, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+            // Update AppleLanguages
+            UserDefaults.standard.set([lang], forKey: "AppleLanguages")
+            UserDefaults.standard.set(isRTL(language: lang), forKey: "AppleTextDirection")
+            UserDefaults.standard.synchronize()
         } else {
-            // System language - get from device settings
-            targetLanguage = mapSystemLanguage(Locale.preferredLanguages.first ?? "en")
+            // System language - clear custom bundle to use system default
+            objc_setAssociatedObject(Bundle.main, &bundleKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+            // Clear AppleLanguages to use system default
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            UserDefaults.standard.removeObject(forKey: "AppleTextDirection")
+            UserDefaults.standard.synchronize()
         }
-
-        // Apply the language
-        let isLanguageRTL = isRTL(language: targetLanguage)
-        objc_setAssociatedObject(Bundle.main, &bundleKey,
-            Bundle(path: Bundle.main.path(forResource: targetLanguage, ofType: "lproj") ?? ""),
-            .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-
-        // Update AppleLanguages for system consistency
-        UserDefaults.standard.set([targetLanguage], forKey: "AppleLanguages")
-        UserDefaults.standard.set(isLanguageRTL, forKey: "AppleTextDirection")
-        UserDefaults.standard.synchronize()
     }
 
     /// Map system language to our supported language codes
