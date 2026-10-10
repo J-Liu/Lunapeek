@@ -947,7 +947,8 @@ final class PlayerViewController: UIViewController {
 
         // Create new AVQueuePlayer with queue from current position
         let player = AVQueuePlayer(items: items)
-        player.actionAtItemEnd = .advance
+        let shouldAutoPlay = Settings.shared.autoPlayNext
+        player.actionAtItemEnd = shouldAutoPlay ? .advance : .pause
         avQueuePlayer = player
 
         // Only activate audio session, don't reconfigure in background
@@ -1118,7 +1119,8 @@ final class PlayerViewController: UIViewController {
         avQueuePlayer = player
 
         // We handle repeat/auto-play logic ourselves
-        player.actionAtItemEnd = .advance
+        let shouldAutoPlay = Settings.shared.autoPlayNext
+        player.actionAtItemEnd = shouldAutoPlay ? .advance : .pause
 
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.frame = videoView.bounds
@@ -1172,16 +1174,20 @@ final class PlayerViewController: UIViewController {
 
         case .all:
             // AVQueuePlayer auto-advances via actionAtItemEnd = .advance
-            // Just track the index
-            if let playlist = playlist, currentIndex + 1 >= playlist.count {
-                // At the end, loop back to beginning
-                currentIndex = 0
-                rebuildQueueAndPlay()
+            // Only if autoPlayNext is enabled
+            if autoPlayNext {
+                if let playlist = playlist, currentIndex + 1 >= playlist.count {
+                    // At the end, loop back to beginning
+                    currentIndex = 0
+                    rebuildQueueAndPlay()
+                } else {
+                    currentIndex += 1
+                    updateNavigationButtons()
+                    resetControlsHideTimer()
+                    log("▶️ AVQueuePlayer auto-advancing (all): index \(currentIndex)")
+                }
             } else {
-                currentIndex += 1
-                updateNavigationButtons()
-                resetControlsHideTimer()
-                log("▶️ AVQueuePlayer auto-advancing (all): index \(currentIndex)")
+                log("⏹️ Auto-play disabled, stopping at index \(currentIndex)")
             }
 
         case .off:
@@ -1195,7 +1201,7 @@ final class PlayerViewController: UIViewController {
                 resetControlsHideTimer()
                 log("▶️ AVQueuePlayer will auto-advance to index \(currentIndex)")
             } else {
-                log("⏹️ No more videos to play (queue exhausted)")
+                log("⏹️ Auto-play disabled or end of playlist, stopping")
             }
         }
     }
@@ -1224,7 +1230,8 @@ final class PlayerViewController: UIViewController {
         }
 
         let player = AVQueuePlayer(items: items)
-        player.actionAtItemEnd = .advance
+        let shouldAutoPlay = Settings.shared.autoPlayNext
+        player.actionAtItemEnd = shouldAutoPlay ? .advance : .pause
         avQueuePlayer = player
 
         let playerLayer = AVPlayerLayer(player: player)
@@ -1263,6 +1270,10 @@ final class PlayerViewController: UIViewController {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .moviePlayback, options: [.defaultToSpeaker, .allowAirPlay])
             try session.setActive(true)
+
+            // Enable remote control events for Dynamic Island
+            UIApplication.shared.beginReceivingRemoteControlEvents()
+
             setupRemoteControls()
         } catch {
             print("Failed to activate audio session: \(error)")
@@ -1323,18 +1334,13 @@ final class PlayerViewController: UIViewController {
             MPMediaItemPropertyTitle: title,
             MPNowPlayingInfoPropertyPlaybackRate: playbackRate,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
-            MPMediaItemPropertyPlaybackDuration: duration
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0
         ]
 
-        // Use audio type for better Dynamic Island support in background
-        if Settings.shared.exitBehavior == .background {
-            info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        } else {
-            info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.video.rawValue
-        }
-
         nowPlayingInfoCenter.nowPlayingInfo = info
-        log("📝 NowPlaying info updated")
+        log("📝 NowPlaying info updated, mediaType=audio for Dynamic Island")
     }
 
     private func deactivateAudioSession() {
