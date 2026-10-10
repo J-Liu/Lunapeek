@@ -16,6 +16,24 @@ final class RemoteFileBrowserViewController: UIViewController {
     private var sftpClient: SFTPClientWrapper?
     private weak var currentMenuVC: UIViewController?
 
+    // Track downloading files: path -> progress (0-1)
+    private var downloadingFiles: [String: Float] = [:]
+    // Track completed downloads for showing prompt
+    private var completedDownloads: [String] = []
+
+    // Download completion banner
+    private var downloadBanner: UIView?
+    private var downloadBannerHeightConstraint: NSLayoutConstraint?
+
+    // Keep-alive timer for SMB/SFTP connections
+    private var keepAliveTimer: Timer?
+
+    // Swipe selection
+    private var isSwipeSelecting = false
+    private var swipeSelectingState: Bool = true
+    private var longPressGestureRecognizer: UILongPressGestureRecognizer?
+    private var panGestureRecognizer: UIPanGestureRecognizer?
+
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .vertical
@@ -80,6 +98,7 @@ final class RemoteFileBrowserViewController: UIViewController {
     }
 
     deinit {
+        stopKeepAliveTimer()
         let smb = smbClient
         let sftp = sftpClient
         Task {
@@ -103,32 +122,45 @@ final class RemoteFileBrowserViewController: UIViewController {
         backItem.tintColor = .label
         navigationItem.leftBarButtonItem = backItem
 
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
+        // Navigation bar buttons - Select + Download + Delete
+        let selectButton = UIBarButtonItem(
             title: "Select",
             style: .plain,
             target: self,
             action: #selector(toggleSelect)
         )
 
-        let toolbar = UIToolbar()
-        toolbar.items = [
-            UIBarButtonItem(title: "Download", style: .plain, target: self, action: #selector(downloadSelected)),
-            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
-            UIBarButtonItem(title: "Delete", style: .plain, target: self, action: #selector(deleteSelected))
-        ]
-        toolbar.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(toolbar)
+        let downloadButton = UIBarButtonItem(
+            title: "Download",
+            style: .plain,
+            target: self,
+            action: #selector(downloadSelected)
+        )
+
+        let deleteButton = UIBarButtonItem(
+            title: "Delete",
+            style: .plain,
+            target: self,
+            action: #selector(deleteSelected)
+        )
+
+        navigationItem.rightBarButtonItems = [selectButton, downloadButton, deleteButton]
+
         view.addSubview(collectionView)
+
+        // Setup swipe selection gestures
+        longPressGestureRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        longPressGestureRecognizer?.minimumPressDuration = 0.5
+        collectionView.addGestureRecognizer(longPressGestureRecognizer!)
+
+        panGestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        collectionView.addGestureRecognizer(panGestureRecognizer!)
 
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: toolbar.topAnchor),
-
-            toolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            toolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            toolbar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            collectionView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
 
         updateToolbar()
@@ -187,6 +219,7 @@ final class RemoteFileBrowserViewController: UIViewController {
                     break
                 }
                 await loadDirectory()
+                startKeepAliveTimer()
             } catch {
                 await MainActor.run { [weak self] in
                     guard let self, isViewLoaded, view.window != nil else { return }
@@ -201,6 +234,90 @@ final class RemoteFileBrowserViewController: UIViewController {
                     present(alert, animated: true)
                 }
             }
+        }
+    }
+
+    private func startKeepAliveTimer() {
+        keepAliveTimer?.invalidate()
+        keepAliveTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { [weak self] in
+                await self?.checkConnection()
+            }
+        }
+    }
+
+    private func stopKeepAliveTimer() {
+        keepAliveTimer?.invalidate()
+        keepAliveTimer = nil
+    }
+
+    private func checkConnection() async {
+        // Try to verify connection by listing current directory
+        var needsReconnect = false
+
+        if smbClient != nil {
+            do {
+                _ = try await smbClient!.listDirectory(path: currentPath)
+            } catch {
+                needsReconnect = true
+            }
+        } else if sftpClient != nil {
+            do {
+                _ = try await sftpClient!.listDirectory(path: currentPath)
+            } catch {
+                needsReconnect = true
+            }
+        }
+
+        if needsReconnect {
+            // Connection is broken, try to reconnect
+            if smbClient != nil {
+                await reconnectSMB()
+            } else if sftpClient != nil {
+                await reconnectSFTP()
+            }
+        }
+    }
+
+    private func reconnectSMB() async {
+        guard let shareName = server.share, !shareName.isEmpty else { return }
+
+        do {
+            let client = SMBClientWrapper()
+            let config = SMBConfiguration(
+                host: server.address,
+                port: server.port ?? 445,
+                share: shareName,
+                username: server.username,
+                password: server.password
+            )
+            try await client.connect(configuration: config)
+            smbClient = client
+            await loadDirectory()
+        } catch {
+            // Reconnection failed, will retry on next keep-alive check
+        }
+    }
+
+    private func reconnectSFTP() async {
+        do {
+            let client = SFTPClientWrapper()
+            let config = SFTPConfiguration(
+                host: server.address,
+                port: server.port ?? 22,
+                username: server.username,
+                password: server.password
+            )
+            try await client.connect(configuration: config)
+            sftpClient = client
+            do {
+                currentPath = try await client.getHomeDirectory()
+            } catch {
+                currentPath = "/"
+            }
+            await loadDirectory()
+        } catch {
+            // Reconnection failed, will retry on next keep-alive check
         }
     }
 
@@ -270,8 +387,46 @@ final class RemoteFileBrowserViewController: UIViewController {
     }
 
     private func updateToolbar() {
-        navigationItem.rightBarButtonItem?.title = isSelecting ? "Cancel" : "Select"
-        navigationController?.toolbar.isHidden = !isSelecting || selectedItems.isEmpty
+        // Only show Select button when not selecting
+        if !isSelecting {
+            let selectButton = UIBarButtonItem(
+                title: "Select",
+                style: .plain,
+                target: self,
+                action: #selector(toggleSelect)
+            )
+            navigationItem.rightBarButtonItems = [selectButton]
+        } else {
+            // Show Delete, Download, Cancel when selecting
+            let deleteButton = UIBarButtonItem(
+                title: "Delete",
+                style: .plain,
+                target: self,
+                action: #selector(deleteSelected)
+            )
+            deleteButton.tintColor = .systemRed
+
+            let hasSelection = !selectedItems.isEmpty
+            deleteButton.isEnabled = hasSelection
+
+            let downloadButton = UIBarButtonItem(
+                title: "Download",
+                style: .plain,
+                target: self,
+                action: #selector(downloadSelected)
+            )
+            downloadButton.isEnabled = hasSelection
+
+            let cancelButton = UIBarButtonItem(
+                title: "Cancel",
+                style: .plain,
+                target: self,
+                action: #selector(toggleSelect)
+            )
+
+            // Delete on left, Download + Cancel on right
+            navigationItem.rightBarButtonItems = [deleteButton, downloadButton, cancelButton]
+        }
     }
 
     @objc private func handleBack() {
@@ -310,31 +465,67 @@ final class RemoteFileBrowserViewController: UIViewController {
         guard !selectedItems.isEmpty else { return }
         let files = selectedItems.map { items[$0.item] }
 
+        // Keep screen on during download
+        UIApplication.shared.isIdleTimerDisabled = true
+
         Task { [weak self] in
             guard let self else { return }
+
+            // Check and reconnect if needed before download
+            await self.checkConnection()
+
+            // Track download progress
+            for file in files {
+                guard !file.isDirectory else { continue }
+                let remotePath = self.currentPath == "/" ? "/\(file.name)" : "\(self.currentPath)/\(file.name)"
+                await MainActor.run {
+                    self.downloadingFiles[remotePath] = 0
+                    self.collectionView.reloadData()
+                }
+            }
+
             for file in files {
                 guard !file.isDirectory else { continue }
 
-                do {
-                    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                    let localURL = documentsPath.appendingPathComponent(file.name)
-                    let remotePath = currentPath == "/" ? "/\(file.name)" : "\(currentPath)/\(file.name)"
+                let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let localURL = documentsPath.appendingPathComponent(file.name)
+                let remotePath = self.currentPath == "/" ? "/\(file.name)" : "\(self.currentPath)/\(file.name)"
 
-                    if let client = smbClient {
-                        try await client.downloadFile(remotePath: remotePath, localURL: localURL) { _ in }
-                    } else if let client = sftpClient {
-                        try await client.downloadFile(remotePath: remotePath, localURL: localURL) { _ in }
+                do {
+                    if let client = self.smbClient {
+                        try await client.downloadFile(remotePath: remotePath, localURL: localURL) { progress in
+                            Task { @MainActor in
+                                self.downloadingFiles[remotePath] = Float(progress.fraction)
+                                self.collectionView.reloadData()
+                            }
+                        }
+                    } else if let client = self.sftpClient {
+                        try await client.downloadFile(remotePath: remotePath, localURL: localURL) { progress in
+                            Task { @MainActor in
+                                self.downloadingFiles[remotePath] = Float(progress.fraction)
+                                self.collectionView.reloadData()
+                            }
+                        }
+                    }
+
+                    // Mark as complete
+                    await MainActor.run {
+                        self.downloadingFiles.removeValue(forKey: remotePath)
+                        self.completedDownloads.append(file.name)
                     }
                 } catch {
                     await MainActor.run { [weak self] in
-                        guard let self, isViewLoaded, view.window != nil else { return }
+                        guard let self, self.isViewLoaded, self.view.window != nil else { return }
+                        self.downloadingFiles.removeValue(forKey: remotePath)
+                        self.collectionView.reloadData()
+
                         let alert = UIAlertController(
                             title: "Download Failed",
                             message: "Failed to download \(file.name): \(error.localizedDescription)",
                             preferredStyle: .alert
                         )
                         alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        present(alert, animated: true)
+                        self.present(alert, animated: true)
                     }
                     return
                 }
@@ -342,17 +533,141 @@ final class RemoteFileBrowserViewController: UIViewController {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                selectedItems.removeAll()
-                collectionView.reloadData()
-                updateToolbar()
+                self.selectedItems.removeAll()
+                self.collectionView.reloadData()
+                self.updateToolbar()
 
-                let alert = UIAlertController(
-                    title: "Download Complete",
-                    message: "Downloaded \(files.count) file(s)",
-                    preferredStyle: .alert
-                )
-                alert.addAction(UIAlertAction(title: "OK", style: .default))
-                present(alert, animated: true)
+                // Show completion prompt with "View Now" button
+                self.showDownloadCompletePrompt()
+
+                // Allow screen to sleep again
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+        }
+    }
+
+    private func showDownloadCompletePrompt() {
+        let files = completedDownloads
+        completedDownloads.removeAll()
+
+        guard !files.isEmpty else { return }
+
+        // Remove existing banner if any
+        downloadBanner?.removeFromSuperview()
+
+        // Create yellow banner
+        let banner = UIView()
+        banner.backgroundColor = .systemYellow
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(banner)
+
+        // "Download complete" label
+        let label = UILabel()
+        label.text = "Downloaded \(files.count) file(s)"
+        label.font = .systemFont(ofSize: 15, weight: .medium)
+        label.textColor = .black
+        label.translatesAutoresizingMaskIntoConstraints = false
+        banner.addSubview(label)
+
+        // "View Now" button (blue, link-like)
+        let viewButton = UIButton(type: .system)
+        viewButton.setTitle("View Now", for: .normal)
+        viewButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        viewButton.setTitleColor(.systemBlue, for: .normal)
+        viewButton.addTarget(self, action: #selector(viewDownloadedFiles), for: .touchUpInside)
+        viewButton.translatesAutoresizingMaskIntoConstraints = false
+        banner.addSubview(viewButton)
+
+        // Auto-dismiss button (X)
+        let dismissButton = UIButton(type: .system)
+        dismissButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        dismissButton.tintColor = .darkGray
+        dismissButton.addTarget(self, action: #selector(dismissDownloadBanner), for: .touchUpInside)
+        dismissButton.translatesAutoresizingMaskIntoConstraints = false
+        banner.addSubview(dismissButton)
+
+        // Layout
+        let heightConstraint = banner.heightAnchor.constraint(equalToConstant: 0)
+        heightConstraint.isActive = true
+        downloadBannerHeightConstraint = heightConstraint
+
+        NSLayoutConstraint.activate([
+            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            banner.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            heightConstraint,
+
+            dismissButton.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: 12),
+            dismissButton.centerYAnchor.constraint(equalTo: banner.centerYAnchor),
+            dismissButton.widthAnchor.constraint(equalToConstant: 30),
+            dismissButton.heightAnchor.constraint(equalToConstant: 30),
+
+            label.leadingAnchor.constraint(equalTo: dismissButton.trailingAnchor, constant: 8),
+            label.centerYAnchor.constraint(equalTo: banner.centerYAnchor),
+
+            viewButton.trailingAnchor.constraint(equalTo: banner.trailingAnchor, constant: -12),
+            viewButton.centerYAnchor.constraint(equalTo: banner.centerYAnchor)
+        ])
+
+        downloadBanner = banner
+
+        // Animate in
+        view.layoutIfNeeded()
+        heightConstraint.constant = 44
+
+        UIView.animate(withDuration: 0.3) {
+            self.view.layoutIfNeeded()
+        }
+
+        // Auto-dismiss after 5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.dismissDownloadBanner()
+        }
+    }
+
+    @objc private func viewDownloadedFiles() {
+        dismissDownloadBanner()
+        navigateToDownloadedFile()
+    }
+
+    @objc private func dismissDownloadBanner() {
+        guard let banner = downloadBanner else { return }
+
+        downloadBannerHeightConstraint?.constant = 0
+        UIView.animate(withDuration: 0.3) {
+            self.view.layoutIfNeeded()
+        } completion: { _ in
+            banner.removeFromSuperview()
+            self.downloadBanner = nil
+        }
+    }
+
+    private func navigateToDownloadedFile(files: [String] = []) {
+        // Determine which tab to navigate to based on file types
+        var hasVideo = false
+        var hasAudio = false
+
+        for file in files {
+            let ext = (file as NSString).pathExtension.lowercased()
+            if ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv"].contains(ext) {
+                hasVideo = true
+            } else if ["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma"].contains(ext) {
+                hasAudio = true
+            }
+        }
+
+        // Navigate to media library tab
+        if let nav = navigationController {
+            if let tabBar = nav.tabBarController {
+                // Video tab is index 0, Audio tab is index 1
+                if hasVideo {
+                    tabBar.selectedIndex = 0
+                } else if hasAudio {
+                    tabBar.selectedIndex = 1
+                } else {
+                    // Default to video if unknown type
+                    tabBar.selectedIndex = 0
+                }
             }
         }
     }
@@ -434,7 +749,10 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "FileItemCell", for: indexPath) as! FileItemCell
         let item = items[indexPath.item]
         let isSelected = selectedItems.contains(indexPath)
-        cell.configure(with: item, isSelected: isSelected)
+        // Get download progress if this file is downloading
+        let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
+        let progress = downloadingFiles[remotePath]
+        cell.configure(with: item, isSelected: isSelected, progress: progress)
         cell.delegate = self
         return cell
     }
@@ -443,6 +761,14 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
         collectionView.deselectItem(at: indexPath, animated: true)
 
         if isSelecting {
+            // Check if file is currently downloading
+            let item = items[indexPath.item]
+            let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
+            if downloadingFiles[remotePath] != nil {
+                // File is downloading, don't allow selection
+                return
+            }
+
             if selectedItems.contains(indexPath) {
                 selectedItems.remove(indexPath)
             } else {
@@ -467,6 +793,61 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
                     playRemoteFile(item)
                 }
             }
+        }
+    }
+
+    // MARK: - Swipe Selection
+
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+
+        let location = gesture.location(in: collectionView)
+        guard let indexPath = collectionView.indexPathForItem(at: location) else { return }
+
+        let item = items[indexPath.item]
+        let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
+        if downloadingFiles[remotePath] != nil {
+            return
+        }
+
+        if !isSelecting {
+            isSelecting = true
+            selectedItems.insert(indexPath)
+            collectionView.reloadData()
+            updateToolbar()
+        }
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard isSelecting else { return }
+
+        let location = gesture.location(in: collectionView)
+        guard let indexPath = collectionView.indexPathForItem(at: location) else { return }
+
+        let item = items[indexPath.item]
+        let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
+        if downloadingFiles[remotePath] != nil {
+            return
+        }
+
+        switch gesture.state {
+        case .began:
+            swipeSelectingState = true
+            if !selectedItems.contains(indexPath) {
+                selectedItems.insert(indexPath)
+                collectionView.reloadItems(at: [indexPath])
+                updateToolbar()
+            }
+        case .changed:
+            if !selectedItems.contains(indexPath) {
+                selectedItems.insert(indexPath)
+                collectionView.reloadItems(at: [indexPath])
+                updateToolbar()
+            }
+        case .ended, .cancelled:
+            break
+        default:
+            break
         }
     }
 }
@@ -959,6 +1340,9 @@ final class FileItemCell: UICollectionViewCell {
     private let titleLabel = UILabel()
     private let menuButton = UIButton()
     private let selectionOverlay = UIView()
+    private let progressView = UIView()
+    private let progressLayer = CAShapeLayer()
+    private var currentProgress: CGFloat = 0
 
     weak var delegate: FileItemCellDelegate?
 
@@ -1005,6 +1389,26 @@ final class FileItemCell: UICollectionViewCell {
         selectionOverlay.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(selectionOverlay)
 
+        // Progress view - covers the entire cell
+        progressView.isHidden = true
+        progressView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(progressView)
+
+        // Progress layer - circular stroke
+        let size: CGFloat = 64
+        let center = CGPoint(x: size / 2, y: size / 2)
+        let radius: CGFloat = size / 2 - 8
+
+        let path = UIBezierPath(arcCenter: center, radius: radius, startAngle: -.pi / 2, endAngle: .pi * 1.5, clockwise: true)
+        progressLayer.path = path.cgPath
+        progressLayer.fillColor = UIColor.clear.cgColor
+        progressLayer.strokeColor = UIColor.systemBlue.cgColor
+        progressLayer.lineWidth = 8
+        progressLayer.lineCap = .round
+        progressLayer.strokeEnd = 0
+        progressLayer.frame = CGRect(x: 0, y: 0, width: size, height: size)
+        progressView.layer.addSublayer(progressLayer)
+
         NSLayoutConstraint.activate([
             iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
             iconView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
@@ -1024,7 +1428,12 @@ final class FileItemCell: UICollectionViewCell {
             selectionOverlay.topAnchor.constraint(equalTo: contentView.topAnchor),
             selectionOverlay.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             selectionOverlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            selectionOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            selectionOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+
+            progressView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            progressView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            progressView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            progressView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
     }
 
@@ -1032,7 +1441,7 @@ final class FileItemCell: UICollectionViewCell {
         delegate?.fileItemCellDidTapMenu(self)
     }
 
-    func configure(with item: RemoteFileItem, isSelected: Bool) {
+    func configure(with item: RemoteFileItem, isSelected: Bool, progress: Float? = nil) {
         titleLabel.text = item.name
 
         let config = UIImage.SymbolConfiguration(pointSize: 48, weight: .regular)
@@ -1060,5 +1469,20 @@ final class FileItemCell: UICollectionViewCell {
         }
 
         selectionOverlay.isHidden = !isSelected
+
+        // Progress indicator
+        if let progress = progress {
+            progressView.isHidden = false
+            progressLayer.strokeEnd = CGFloat(progress)
+
+            menuButton.isEnabled = false
+            menuButton.alpha = 0.5
+        } else {
+            progressView.isHidden = true
+            progressLayer.strokeEnd = 0
+
+            menuButton.isEnabled = true
+            menuButton.alpha = 1.0
+        }
     }
 }

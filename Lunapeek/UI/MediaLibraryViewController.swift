@@ -42,6 +42,12 @@ final class MediaLibraryViewController: UIViewController {
     private var movingItem: LocalMediaItem?
     private var copyingItem: LocalMediaItem?
 
+    // Swipe selection
+    private var isSwipeSelecting = false
+    private var swipeSelectingState: Bool = true
+    private var longPressGestureRecognizer: UILongPressGestureRecognizer?
+    private var panGestureRecognizer: UIPanGestureRecognizer?
+
     init(mediaType: MediaType) {
         self.mediaType = mediaType
         super.init(nibName: nil, bundle: nil)
@@ -121,6 +127,14 @@ final class MediaLibraryViewController: UIViewController {
         collectionView.register(ListItemCell.self, forCellWithReuseIdentifier: "ListItemCell")
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
+
+        // Add swipe selection gestures
+        longPressGestureRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        longPressGestureRecognizer?.minimumPressDuration = 0.5
+        collectionView.addGestureRecognizer(longPressGestureRecognizer!)
+
+        panGestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        collectionView.addGestureRecognizer(panGestureRecognizer!)
 
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -396,6 +410,55 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
         } else {
             let item = items[indexPath.item]
             play(url: item.url)
+        }
+    }
+
+    // MARK: - Swipe Selection
+
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+
+        let location = gesture.location(in: collectionView)
+        guard let indexPath = collectionView.indexPathForItem(at: location) else { return }
+
+        if !isSelecting {
+            isSelecting = true
+            selectedItems.insert(indexPath)
+            selectButton.title = "Cancel"
+            collectionView.reloadData()
+            let deleteButton = UIBarButtonItem(
+                title: "Delete",
+                style: .plain,
+                target: self,
+                action: #selector(deleteSelected)
+            )
+            deleteButton.tintColor = .systemRed
+            navigationItem.rightBarButtonItems = [deleteButton]
+        }
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard isSelecting else { return }
+
+        let location = gesture.location(in: collectionView)
+        guard let indexPath = collectionView.indexPathForItem(at: location) else { return }
+
+        switch gesture.state {
+        case .began:
+            swipeSelectingState = true
+            if !selectedItems.contains(indexPath) {
+                selectedItems.insert(indexPath)
+                collectionView.reloadItems(at: [indexPath])
+            }
+        case .changed:
+            if !selectedItems.contains(indexPath) {
+                selectedItems.insert(indexPath)
+                collectionView.reloadItems(at: [indexPath])
+            }
+        case .ended, .cancelled:
+            break
+        default:
+            break
         }
     }
 
