@@ -1,0 +1,81 @@
+/* Video */
+"Video" = "视频";
+"Audio" = "音频";
+"Network" = "网络";
+"Settings" = "设置";
+"Playlist" = "播放列表";
+
+/* File Browser */
+"Show Hidden Files" = "显示隐藏文件";
+"Show Non-Media Files" = "显示非媒体文件";
+"Show Thumbnails" = "显示缩略图";
+"Clear Recent Servers" = "清除最近服务器";
+"No files found" = "未找到文件";
+"Loading..." = "加载中...";
+"Error" = "错误";
+"Cancel" = "取消";
+"Delete" = "删除";
+"Download" = "下载";
+"Play" = "播放";
+"Share" = "分享";
+"Rename" = "重命名";
+"Show Info" = "显示信息";
+
+/* Playback */
+"Auto Play Next" = "自动播放下一个";
+"Repeat Mode" = "循环模式";
+"Audio Background Play" = "后台播放音频";
+"Exit Behavior" = "退出行为";
+"Pause" = "暂停";
+"Background Play" = "后台播放";
+"Picture in Picture" = "画中画";
+
+/* Aspect Ratio */
+"Default Aspect Ratio" = "默认画面比例";
+"Fit" = "适应";
+"Fill" = "填充";
+"Stretch" = "拉伸";
+
+/* Repeat */
+"Off" = "关闭";
+"Repeat One" = "单曲循环";
+"Repeat All" = "列表循环";
+
+/* Language */
+"Language" = "语言";
+"System" = "跟随系统";
+
+/* About */
+"Version" = "版本";
+"License" = "许可证";
+
+/* Selection */
+"Select" = "选择";
+"Select All" = "全选";
+"Downloaded %d file(s)" = "已下载 %d 个文件";
+"View Now" = "立即查看";
+
+/* Network */
+"Add Server" = "添加服务器";
+"Edit Server" = "编辑服务器";
+"Server Address" = "服务器地址";
+"Username" = "用户名";
+"Password" = "密码";
+"Share Name" = "共享名称";
+"Connect" = "连接";
+"Disconnect" = "断开";
+"SMB" = "SMB";
+"SFTP" = "SFTP";
+"Port" = "端口";
+
+/* Actions */
+"Copy" = "复制";
+"Move" = "移动";
+"New Folder" = "新建文件夹";
+"Confirm Delete" = "确认删除";
+"Delete %d items?" = "删除 %d 个项目？";
+
+/* More */
+"What happens when you leave during video playback" = "退出视频播放时会发生什么";
+"Clear" = "清除";
+"This will remove all saved servers. Are you sure?" = "这将删除所有保存的服务器。确定吗？";

@@ -25,35 +25,35 @@ final class MainTabBarController: UITabBarController {
     private func setupTabs() {
         let videoVC = MediaLibraryViewController(mediaType: .video)
         videoVC.tabBarItem = UITabBarItem(
-            title: "Video",
+            title: NSLocalizedString("Video", comment: ""),
             image: UIImage(systemName: "video.fill"),
             tag: 0
         )
 
         let audioVC = MediaLibraryViewController(mediaType: .audio)
         audioVC.tabBarItem = UITabBarItem(
-            title: "Audio",
+            title: NSLocalizedString("Audio", comment: ""),
             image: UIImage(systemName: "music.note.list"),
             tag: 1
         )
 
         let playlistVC = PlaylistViewController()
         playlistVC.tabBarItem = UITabBarItem(
-            title: "Playlist",
+            title: NSLocalizedString("Playlist", comment: ""),
             image: UIImage(systemName: "list.bullet.rectangle"),
             tag: 2
         )
 
         let networkVC = NetworkViewController()
         networkVC.tabBarItem = UITabBarItem(
-            title: "Network",
+            title: NSLocalizedString("Network", comment: ""),
             image: UIImage(systemName: "network"),
             tag: 3
         )
 
         let settingsVC = SettingsViewController()
         settingsVC.tabBarItem = UITabBarItem(
-            title: "Settings",
+            title: NSLocalizedString("Settings", comment: ""),
             image: UIImage(systemName: "gearshape.fill"),
             tag: 4
         )

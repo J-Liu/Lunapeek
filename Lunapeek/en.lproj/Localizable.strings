@@ -1,0 +1,81 @@
+/* Video */
+"Video" = "Video";
+"Audio" = "Audio";
+"Network" = "Network";
+"Settings" = "Settings";
+"Playlist" = "Playlist";
+
+/* File Browser */
+"Show Hidden Files" = "Show Hidden Files";
+"Show Non-Media Files" = "Show Non-Media Files";
+"Show Thumbnails" = "Show Thumbnails";
+"Clear Recent Servers" = "Clear Recent Servers";
+"No files found" = "No files found";
+"Loading..." = "Loading...";
+"Error" = "Error";
+"Cancel" = "Cancel";
+"Delete" = "Delete";
+"Download" = "Download";
+"Play" = "Play";
+"Share" = "Share";
+"Rename" = "Rename";
+"Show Info" = "Show Info";
+
+/* Playback */
+"Auto Play Next" = "Auto Play Next";
+"Repeat Mode" = "Repeat Mode";
+"Audio Background Play" = "Audio Background Play";
+"Exit Behavior" = "Exit Behavior";
+"Pause" = "Pause";
+"Background Play" = "Background Play";
+"Picture in Picture" = "Picture in Picture";
+
+/* Aspect Ratio */
+"Default Aspect Ratio" = "Default Aspect Ratio";
+"Fit" = "Fit";
+"Fill" = "Fill";
+"Stretch" = "Stretch";
+
+/* Repeat */
+"Off" = "Off";
+"Repeat One" = "Repeat One";
+"Repeat All" = "Repeat All";
+
+/* Language */
+"Language" = "Language";
+"System" = "System";
+
+/* About */
+"Version" = "Version";
+"License" = "License";
+
+/* Selection */
+"Select" = "Select";
+"Select All" = "Select All";
+"Downloaded %d file(s)" = "Downloaded %d file(s)";
+"View Now" = "View Now";
+
+/* Network */
+"Add Server" = "Add Server";
+"Edit Server" = "Edit Server";
+"Server Address" = "Server Address";
+"Username" = "Username";
+"Password" = "Password";
+"Share Name" = "Share Name";
+"Connect" = "Connect";
+"Disconnect" = "Disconnect";
+"SMB" = "SMB";
+"SFTP" = "SFTP";
+"Port" = "Port";
+
+/* Actions */
+"Copy" = "Copy";
+"Move" = "Move";
+"New Folder" = "New Folder";
+"Confirm Delete" = "Confirm Delete";
+"Delete %d items?" = "Delete %d items?";
+
+/* More */
+"What happens when you leave during video playback" = "What happens when you leave during video playback";
+"Clear" = "Clear";
+"This will remove all saved servers. Are you sure?" = "This will remove all saved servers. Are you sure?";

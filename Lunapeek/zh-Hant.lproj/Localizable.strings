@@ -1,0 +1,81 @@
+/* Video */
+"Video" = "影片";
+"Audio" = "音樂";
+"Network" = "網路";
+"Settings" = "設定";
+"Playlist" = "播放清單";
+
+/* File Browser */
+"Show Hidden Files" = "顯示隱藏檔案";
+"Show Non-Media Files" = "顯示非媒體檔案";
+"Show Thumbnails" = "顯示縮圖";
+"Clear Recent Servers" = "清除最近伺服器";
+"No files found" = "找不到檔案";
+"Loading..." = "載入中...";
+"Error" = "錯誤";
+"Cancel" = "取消";
+"Delete" = "刪除";
+"Download" = "下載";
+"Play" = "播放";
+"Share" = "分享";
+"Rename" = "重新命名";
+"Show Info" = "顯示資訊";
+
+/* Playback */
+"Auto Play Next" = "自動播放下一個";
+"Repeat Mode" = "循環模式";
+"Audio Background Play" = "背景播放音訊";
+"Exit Behavior" = "離開行為";
+"Pause" = "暫停";
+"Background Play" = "背景播放";
+"Picture in Picture" = "子母畫面";
+
+/* Aspect Ratio */
+"Default Aspect Ratio" = "預設畫面比例";
+"Fit" = "適合";
+"Fill" = "填充";
+"Stretch" = "拉伸";
+
+/* Repeat */
+"Off" = "關閉";
+"Repeat One" = "單曲循環";
+"Repeat All" = "列表循環";
+
+/* Language */
+"Language" = "語言";
+"System" = "跟隨系統";
+
+/* About */
+"Version" = "版本";
+"License" = "授權";
+
+/* Selection */
+"Select" = "選擇";
+"Select All" = "全選";
+"Downloaded %d file(s)" = "已下載 %d 個檔案";
+"View Now" = "立即查看";
+
+/* Network */
+"Add Server" = "新增伺服器";
+"Edit Server" = "編輯伺服器";
+"Server Address" = "伺服器位址";
+"Username" = "使用者名稱";
+"Password" = "密碼";
+"Share Name" = "共用名稱";
+"Connect" = "連線";
+"Disconnect" = "中斷連線";
+"SMB" = "SMB";
+"SFTP" = "SFTP";
+"Port" = "連接埠";
+
+/* Actions */
+"Copy" = "複製";
+"Move" = "移動";
+"New Folder" = "新建資料夾";
+"Confirm Delete" = "確認刪除";
+"Delete %d items?" = "刪除 %d 個項目？";
+
+/* More */
+"What happens when you leave during video playback" = "離開影片播放時會發生什麼事";
+"Clear" = "清除";
+"This will remove all saved servers. Are you sure?" = "這將刪除所有儲存的伺服器。確定嗎？";

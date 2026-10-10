@@ -98,9 +98,9 @@ enum RepeatMode: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .off: return "Off"
-        case .one: return "Repeat One"
-        case .all: return "Repeat All"
+        case .off: return NSLocalizedString("Off", comment: "")
+        case .one: return NSLocalizedString("Repeat One", comment: "")
+        case .all: return NSLocalizedString("Repeat All", comment: "")
         }
     }
 }
@@ -112,9 +112,9 @@ enum AspectRatio: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .fit: return "Fit"
-        case .fill: return "Fill"
-        case .stretch: return "Stretch"
+        case .fit: return NSLocalizedString("Fit", comment: "")
+        case .fill: return NSLocalizedString("Fill", comment: "")
+        case .stretch: return NSLocalizedString("Stretch", comment: "")
         }
     }
 
@@ -134,9 +134,9 @@ enum ExitBehavior: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .pip: return "Picture in Picture"
-        case .background: return "Background Play"
-        case .pause: return "Pause"
+        case .pip: return NSLocalizedString("Picture in Picture", comment: "")
+        case .background: return NSLocalizedString("Background Play", comment: "")
+        case .pause: return NSLocalizedString("Pause", comment: "")
         }
     }
 }

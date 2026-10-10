@@ -11,10 +11,21 @@ final class SettingsViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageDidChange),
+            name: .languageChanged,
+            object: nil
+        )
+    }
+
+    @objc private func languageDidChange() {
+        tableView.reloadData()
     }
 
     private func setupUI() {
-        title = "Settings"
+        title = NSLocalizedString("Settings", comment: "")
         view.backgroundColor = .systemBackground
 
         tableView = UITableView(frame: .zero, style: .insetGrouped)
@@ -51,11 +62,11 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch section {
-        case 0: return "File Browser"
-        case 1: return "Playback"
-        case 2: return "Video"
-        case 3: return "Language"
-        case 4: return "About"
+        case 0: return NSLocalizedString("File Browser", comment: "")
+        case 1: return NSLocalizedString("Playback", comment: "")
+        case 2: return NSLocalizedString("Video", comment: "")
+        case 3: return NSLocalizedString("Language", comment: "")
+        case 4: return NSLocalizedString("About", comment: "")
         default: return nil
         }
     }
@@ -68,25 +79,25 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 0: // File Browser
             switch indexPath.row {
             case 0:
-                cell.textLabel?.text = "Show Hidden Files"
+                cell.textLabel?.text = NSLocalizedString("Show Hidden Files", comment: "")
                 let toggle = UISwitch()
                 toggle.isOn = Settings.shared.showHiddenFiles
                 toggle.addTarget(self, action: #selector(showHiddenFilesChanged(_:)), for: .valueChanged)
                 cell.accessoryView = toggle
             case 1:
-                cell.textLabel?.text = "Show Non-Media Files"
+                cell.textLabel?.text = NSLocalizedString("Show Non-Media Files", comment: "")
                 let toggle = UISwitch()
                 toggle.isOn = Settings.shared.showNonMediaFiles
                 toggle.addTarget(self, action: #selector(showNonMediaFilesChanged(_:)), for: .valueChanged)
                 cell.accessoryView = toggle
             case 2:
-                cell.textLabel?.text = "Show Thumbnails"
+                cell.textLabel?.text = NSLocalizedString("Show Thumbnails", comment: "")
                 let toggle = UISwitch()
                 toggle.isOn = Settings.shared.showThumbnails
                 toggle.addTarget(self, action: #selector(showThumbnailsChanged(_:)), for: .valueChanged)
                 cell.accessoryView = toggle
             case 3:
-                cell.textLabel?.text = "Clear Recent Servers"
+                cell.textLabel?.text = NSLocalizedString("Clear Recent Servers", comment: "")
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
             default: break
@@ -95,24 +106,24 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 1: // Playback
             switch indexPath.row {
             case 0:
-                cell.textLabel?.text = "Auto Play Next"
+                cell.textLabel?.text = NSLocalizedString("Auto Play Next", comment: "")
                 let toggle = UISwitch()
                 toggle.isOn = Settings.shared.autoPlayNext
                 toggle.addTarget(self, action: #selector(autoPlayNextChanged(_:)), for: .valueChanged)
                 cell.accessoryView = toggle
             case 1:
-                cell.textLabel?.text = "Repeat Mode"
+                cell.textLabel?.text = NSLocalizedString("Repeat Mode", comment: "")
                 cell.detailTextLabel?.text = Settings.shared.repeatMode.displayName
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
             case 2:
-                cell.textLabel?.text = "Audio Background Play"
+                cell.textLabel?.text = NSLocalizedString("Audio Background Play", comment: "")
                 let toggle = UISwitch()
                 toggle.isOn = Settings.shared.backgroundPlay
                 toggle.addTarget(self, action: #selector(backgroundPlayChanged(_:)), for: .valueChanged)
                 cell.accessoryView = toggle
             case 3:
-                cell.textLabel?.text = "Exit Behavior"
+                cell.textLabel?.text = NSLocalizedString("Exit Behavior", comment: "")
                 cell.detailTextLabel?.text = Settings.shared.exitBehavior.displayName
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
@@ -122,7 +133,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 2: // Video
             switch indexPath.row {
             case 0:
-                cell.textLabel?.text = "Default Aspect Ratio"
+                cell.textLabel?.text = NSLocalizedString("Default Aspect Ratio", comment: "")
                 cell.detailTextLabel?.text = Settings.shared.defaultAspectRatio.displayName
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
@@ -130,7 +141,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             }
 
         case 3: // Language
-            cell.textLabel?.text = "Language"
+            cell.textLabel?.text = NSLocalizedString("Language", comment: "")
             cell.detailTextLabel?.text = Settings.shared.language.displayName
             cell.selectionStyle = .default
             cell.accessoryType = .disclosureIndicator
@@ -138,11 +149,11 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 4: // About
             switch indexPath.row {
             case 0:
-                cell.textLabel?.text = "Version"
+                cell.textLabel?.text = NSLocalizedString("Version", comment: "")
                 let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
                 cell.detailTextLabel?.text = version
             case 1:
-                cell.textLabel?.text = "License"
+                cell.textLabel?.text = NSLocalizedString("License", comment: "")
                 cell.detailTextLabel?.text = "AGPL-3.0"
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
@@ -207,12 +218,12 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
 
     private func clearRecentServers() {
         let alert = UIAlertController(
-            title: "Clear Recent Servers",
-            message: "This will remove all saved servers. Are you sure?",
+            title: NSLocalizedString("Clear Recent Servers", comment: ""),
+            message: NSLocalizedString("This will remove all saved servers. Are you sure?", comment: ""),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Clear", style: .destructive) { _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Clear", comment: ""), style: .destructive) { _ in
             SavedServer.save([])
         })
         present(alert, animated: true)
@@ -233,7 +244,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
     private func showRepeatModePicker() {
         let items = RepeatMode.allCases.map { $0.displayName }
         let selectedIndex = RepeatMode.allCases.firstIndex(of: Settings.shared.repeatMode) ?? 0
-        showPicker(title: "Repeat Mode", items: items, selectedIndex: selectedIndex) { index in
+        showPicker(title: NSLocalizedString("Repeat Mode", comment: ""), items: items, selectedIndex: selectedIndex) { index in
             Settings.shared.repeatMode = RepeatMode.allCases[index]
             self.tableView.reloadData()
         }
@@ -242,7 +253,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
     private func showExitBehaviorPicker() {
         let items = ExitBehavior.allCases.map { $0.displayName }
         let selectedIndex = ExitBehavior.allCases.firstIndex(of: Settings.shared.exitBehavior) ?? 0
-        showPicker(title: "Exit Behavior", message: "What happens when you leave during video playback", items: items, selectedIndex: selectedIndex) { index in
+        showPicker(title: NSLocalizedString("Exit Behavior", comment: ""), message: NSLocalizedString("What happens when you leave during video playback", comment: ""), items: items, selectedIndex: selectedIndex) { index in
             Settings.shared.exitBehavior = ExitBehavior.allCases[index]
             self.tableView.reloadData()
         }
@@ -251,7 +262,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
     private func showAspectRatioPicker() {
         let items = AspectRatio.allCases.map { $0.displayName }
         let selectedIndex = AspectRatio.allCases.firstIndex(of: Settings.shared.defaultAspectRatio) ?? 0
-        showPicker(title: "Default Aspect Ratio", items: items, selectedIndex: selectedIndex) { index in
+        showPicker(title: NSLocalizedString("Default Aspect Ratio", comment: ""), items: items, selectedIndex: selectedIndex) { index in
             Settings.shared.defaultAspectRatio = AspectRatio.allCases[index]
             self.tableView.reloadData()
         }
@@ -260,7 +271,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
     private func showLanguagePicker() {
         let items = Language.allCases.map { $0.displayName }
         let selectedIndex = Language.allCases.firstIndex(of: Settings.shared.language) ?? 0
-        showPicker(title: "Language", items: items, selectedIndex: selectedIndex) { index in
+        showPicker(title: NSLocalizedString("Language", comment: ""), items: items, selectedIndex: selectedIndex) { index in
             Settings.shared.language = Language.allCases[index]
             self.tableView.reloadData()
         }
