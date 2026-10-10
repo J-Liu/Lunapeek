@@ -5,7 +5,7 @@
 
 import UIKit
 
-final class RemoteFileBrowserViewController: UIViewController {
+final class RemoteFileBrowserViewController: UIViewController, UIGestureRecognizerDelegate {
     private let server: SavedServer
     private var currentPath: String
     private var items: [RemoteFileItem] = []
@@ -31,8 +31,23 @@ final class RemoteFileBrowserViewController: UIViewController {
     // Swipe selection
     private var isSwipeSelecting = false
     private var swipeSelectingState: Bool = true
+    private var swipeSelectingStartIndex: Int?
+    private var autoScrollTimer: Timer?
     private var longPressGestureRecognizer: UILongPressGestureRecognizer?
     private var panGestureRecognizer: UIPanGestureRecognizer?
+
+    // Debug log
+    private var debugTextView: UITextView!
+
+    private func appendDebugLog(_ text: String) {
+        let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        let line = "[\(timestamp)] \(text)\n"
+        DispatchQueue.main.async { [weak self] in
+            self?.debugTextView.text = (self?.debugTextView.text ?? "") + line
+            let bottom = NSRange(location: self?.debugTextView.text.count ?? 0, length: 0)
+            self?.debugTextView.scrollRangeToVisible(bottom)
+        }
+    }
 
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
@@ -45,6 +60,9 @@ final class RemoteFileBrowserViewController: UIViewController {
         cv.backgroundColor = .systemBackground
         cv.delegate = self
         cv.dataSource = self
+        cv.isScrollEnabled = true
+        cv.alwaysBounceVertical = true
+        cv.showsVerticalScrollIndicator = true
         cv.register(FileItemCell.self, forCellWithReuseIdentifier: "FileItemCell")
         cv.translatesAutoresizingMaskIntoConstraints = false
         return cv
@@ -53,10 +71,16 @@ final class RemoteFileBrowserViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         updateCollectionViewLayout()
+
+        // Debug: log scroll state
+        appendDebugLog("bounds: \(Int(collectionView.bounds.width))x\(Int(collectionView.bounds.height)), content: \(Int(collectionView.contentSize.width))x\(Int(collectionView.contentSize.height))")
     }
 
     private func updateCollectionViewLayout() {
         guard let layout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout else { return }
+
+        // Ensure collection view has valid bounds before calculating
+        guard collectionView.bounds.width > 0 else { return }
 
         let availableWidth = collectionView.bounds.width - 16
         let minItemWidth: CGFloat = 90
@@ -154,6 +178,7 @@ final class RemoteFileBrowserViewController: UIViewController {
         collectionView.addGestureRecognizer(longPressGestureRecognizer!)
 
         panGestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGestureRecognizer?.delegate = self
         collectionView.addGestureRecognizer(panGestureRecognizer!)
 
         NSLayoutConstraint.activate([
@@ -161,6 +186,23 @@ final class RemoteFileBrowserViewController: UIViewController {
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        ])
+
+        // Debug text view
+        debugTextView = UITextView()
+        debugTextView.isEditable = false
+        debugTextView.font = UIFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+        debugTextView.backgroundColor = UIColor.black.withAlphaComponent(0.8)
+        debugTextView.textColor = .green
+        debugTextView.isHidden = true
+        debugTextView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(debugTextView)
+
+        NSLayoutConstraint.activate([
+            debugTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            debugTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            debugTextView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            debugTextView.heightAnchor.constraint(equalToConstant: 100)
         ])
 
         updateToolbar()
@@ -364,6 +406,7 @@ final class RemoteFileBrowserViewController: UIViewController {
                 guard let self else { return }
                 self.items = filteredFiles
                 self.collectionView.reloadData()
+                self.appendDebugLog("Loaded \(filteredFiles.count) items, contentSize: \(Int(self.collectionView.contentSize.height))")
             }
         } catch {
             await MainActor.run { [weak self] in
@@ -467,6 +510,7 @@ final class RemoteFileBrowserViewController: UIViewController {
 
         // Keep screen on during download
         UIApplication.shared.isIdleTimerDisabled = true
+        print("[Download] Screen will stay on, idleTimerDisabled = true")
 
         Task { [weak self] in
             guard let self else { return }
@@ -739,6 +783,25 @@ final class RemoteFileBrowserViewController: UIViewController {
     }
 }
 
+// MARK: - UIGestureRecognizerDelegate
+extension RemoteFileBrowserViewController {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return false
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return false
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer == panGestureRecognizer {
+            // Only begin pan gesture if in selection mode, otherwise let scroll work
+            return isSelecting
+        }
+        return true
+    }
+}
+
 extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return items.count
@@ -821,32 +884,79 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
         guard isSelecting else { return }
 
         let location = gesture.location(in: collectionView)
-        guard let indexPath = collectionView.indexPathForItem(at: location) else { return }
-
-        let item = items[indexPath.item]
-        let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
-        if downloadingFiles[remotePath] != nil {
-            return
-        }
+        let pointInCollectionView = collectionView.convert(location, from: view)
 
         switch gesture.state {
         case .began:
-            swipeSelectingState = true
-            if !selectedItems.contains(indexPath) {
-                selectedItems.insert(indexPath)
-                collectionView.reloadItems(at: [indexPath])
-                updateToolbar()
+            // Record starting index
+            if let indexPath = collectionView.indexPathForItem(at: pointInCollectionView) {
+                swipeSelectingStartIndex = indexPath.item
             }
+            handlePanSelection(at: pointInCollectionView, from: swipeSelectingStartIndex)
         case .changed:
-            if !selectedItems.contains(indexPath) {
-                selectedItems.insert(indexPath)
-                collectionView.reloadItems(at: [indexPath])
-                updateToolbar()
-            }
+            // Auto-scroll at edges
+            handleAutoScroll(at: location)
+            handlePanSelection(at: pointInCollectionView, from: swipeSelectingStartIndex)
         case .ended, .cancelled:
-            break
+            swipeSelectingStartIndex = nil
+            autoScrollTimer?.invalidate()
+            autoScrollTimer = nil
         default:
             break
+        }
+    }
+
+    private func handlePanSelection(at point: CGPoint, from startIndex: Int?) {
+        guard let start = startIndex,
+              let currentIndexPath = collectionView.indexPathForItem(at: point) else { return }
+
+        let current = currentIndexPath.item
+
+        // Select all items between start and current
+        let range = min(start, current)...max(start, current)
+        var changed = false
+
+        for i in range {
+            let indexPath = IndexPath(item: i, section: 0)
+            let item = items[i]
+            let remotePath = currentPath == "/" ? "/\(item.name)" : "\(currentPath)/\(item.name)"
+
+            // Skip downloading files
+            if downloadingFiles[remotePath] != nil { continue }
+
+            if !selectedItems.contains(indexPath) {
+                selectedItems.insert(indexPath)
+                changed = true
+            }
+        }
+
+        if changed {
+            collectionView.reloadData()
+            updateToolbar()
+        }
+    }
+
+    private func handleAutoScroll(at point: CGPoint) {
+        let scrollSpeed: CGFloat = 10
+        let edgeThreshold: CGFloat = 50
+
+        autoScrollTimer?.invalidate()
+
+        if point.y < edgeThreshold {
+            // Scroll up
+            autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                let offset = self.collectionView.contentOffset
+                self.collectionView.setContentOffset(CGPoint(x: offset.x, y: max(0, offset.y - scrollSpeed)), animated: false)
+            }
+        } else if point.y > collectionView.bounds.height - edgeThreshold {
+            // Scroll down
+            autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                let offset = self.collectionView.contentOffset
+                let maxOffset = self.collectionView.contentSize.height - self.collectionView.bounds.height
+                self.collectionView.setContentOffset(CGPoint(x: offset.x, y: min(maxOffset, offset.y + scrollSpeed)), animated: false)
+            }
         }
     }
 }

@@ -25,7 +25,7 @@ enum SortOption: String, CaseIterable {
     case sizeSmallest = "Size (Smallest)"
 }
 
-final class MediaLibraryViewController: UIViewController {
+final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDelegate {
     private let mediaType: MediaType
     private var items: [LocalMediaItem] = []
     private var collectionView: UICollectionView!
@@ -33,6 +33,8 @@ final class MediaLibraryViewController: UIViewController {
     private var displayMode: DisplayMode = .grid
     private var sortOption: SortOption = .dateNewest
     private var isSelecting = false
+    private var swipeSelectingStartIndex: Int?
+    private var autoScrollTimer: Timer?
     private var selectedItems: Set<IndexPath> = []
 
     private var displayModeButton: UIBarButtonItem!
@@ -60,6 +62,13 @@ final class MediaLibraryViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if let layout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout {
+            updateLayout(layout)
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -122,6 +131,9 @@ final class MediaLibraryViewController: UIViewController {
         collectionView.backgroundColor = .systemBackground
         collectionView.delegate = self
         collectionView.dataSource = self
+        collectionView.isScrollEnabled = true
+        collectionView.alwaysBounceVertical = true
+        collectionView.showsVerticalScrollIndicator = true
         collectionView.register(MediaItemCell.self, forCellWithReuseIdentifier: "MediaItemCell")
         collectionView.register(IconItemCell.self, forCellWithReuseIdentifier: "IconItemCell")
         collectionView.register(ListItemCell.self, forCellWithReuseIdentifier: "ListItemCell")
@@ -134,6 +146,7 @@ final class MediaLibraryViewController: UIViewController {
         collectionView.addGestureRecognizer(longPressGestureRecognizer!)
 
         panGestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGestureRecognizer?.delegate = self
         collectionView.addGestureRecognizer(panGestureRecognizer!)
 
         NSLayoutConstraint.activate([
@@ -364,6 +377,16 @@ final class MediaLibraryViewController: UIViewController {
     }
 }
 
+// MARK: - UIGestureRecognizerDelegate
+extension MediaLibraryViewController {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer == panGestureRecognizer {
+            return isSelecting
+        }
+        return true
+    }
+}
+
 extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionViewDelegate, IconItemCellDelegate, MediaItemCellDelegate, ListItemCellDelegate {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return items.count
@@ -441,24 +464,66 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
         guard isSelecting else { return }
 
         let location = gesture.location(in: collectionView)
-        guard let indexPath = collectionView.indexPathForItem(at: location) else { return }
+        let pointInCollectionView = collectionView.convert(location, from: view)
 
         switch gesture.state {
         case .began:
-            swipeSelectingState = true
-            if !selectedItems.contains(indexPath) {
-                selectedItems.insert(indexPath)
-                collectionView.reloadItems(at: [indexPath])
+            if let indexPath = collectionView.indexPathForItem(at: pointInCollectionView) {
+                swipeSelectingStartIndex = indexPath.item
             }
+            handleLocalSelection(at: pointInCollectionView, from: swipeSelectingStartIndex)
         case .changed:
-            if !selectedItems.contains(indexPath) {
-                selectedItems.insert(indexPath)
-                collectionView.reloadItems(at: [indexPath])
-            }
+            handleAutoScroll(at: location)
+            handleLocalSelection(at: pointInCollectionView, from: swipeSelectingStartIndex)
         case .ended, .cancelled:
-            break
+            swipeSelectingStartIndex = nil
+            autoScrollTimer?.invalidate()
+            autoScrollTimer = nil
         default:
             break
+        }
+    }
+
+    private func handleLocalSelection(at point: CGPoint, from startIndex: Int?) {
+        guard let start = startIndex,
+              let currentIndexPath = collectionView.indexPathForItem(at: point) else { return }
+
+        let current = currentIndexPath.item
+        let range = min(start, current)...max(start, current)
+        var changed = false
+
+        for i in range {
+            let indexPath = IndexPath(item: i, section: 0)
+            if !selectedItems.contains(indexPath) {
+                selectedItems.insert(indexPath)
+                changed = true
+            }
+        }
+
+        if changed {
+            collectionView.reloadData()
+        }
+    }
+
+    private func handleAutoScroll(at point: CGPoint) {
+        let scrollSpeed: CGFloat = 10
+        let edgeThreshold: CGFloat = 50
+
+        autoScrollTimer?.invalidate()
+
+        if point.y < edgeThreshold {
+            autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                let offset = self.collectionView.contentOffset
+                self.collectionView.setContentOffset(CGPoint(x: offset.x, y: max(0, offset.y - scrollSpeed)), animated: false)
+            }
+        } else if point.y > collectionView.bounds.height - edgeThreshold {
+            autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                let offset = self.collectionView.contentOffset
+                let maxOffset = self.collectionView.contentSize.height - self.collectionView.bounds.height
+                self.collectionView.setContentOffset(CGPoint(x: offset.x, y: min(maxOffset, offset.y + scrollSpeed)), animated: false)
+            }
         }
     }
 
