@@ -62,6 +62,10 @@ final class LanguageManager {
         let stored = UserDefaults.standard.string(forKey: "language") ?? "system"
         return Language(rawValue: stored) ?? .system
     }
+
+    var currentLocale: Locale {
+        return currentLanguage.locale ?? Locale.current
+    }
 }
 
 extension Notification.Name {
@@ -70,4 +74,11 @@ extension Notification.Name {
 
 func L(_ key: String) -> String {
     return NSLocalizedString(key, comment: "")
+}
+
+/// Get DateFormatter with current language locale
+func makeDateFormatter() -> DateFormatter {
+    let formatter = DateFormatter()
+    formatter.locale = LanguageManager.shared.currentLocale
+    return formatter
 }
