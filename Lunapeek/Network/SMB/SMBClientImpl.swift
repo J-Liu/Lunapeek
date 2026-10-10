@@ -144,8 +144,14 @@ public final class SMBClientWrapper: SMBClientProtocol {
         }
 
         do {
+            let fileSize = try await client.fileInfo(path: remotePath)
+            let totalBytes = Int64(fileSize.standardInformation.endOfFile)
+
             try await client.download(path: remotePath, localPath: localURL, overwrite: true) { progressValue in
-                progress(SMBProgress(bytesTransferred: 0, totalBytes: 0))
+                // SMB callback seems to return a progress indicator (0-1 or chunk index), not cumulative bytes
+                // Treat it as fraction directly, but cap at 1.0
+                let fraction = min(1.0, Double(progressValue))
+                progress(SMBProgress(bytesTransferred: Int64(fraction * Double(totalBytes)), totalBytes: totalBytes))
             }
         } catch {
             throw SMBError.downloadFailed(error)

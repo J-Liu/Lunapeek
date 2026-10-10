@@ -508,7 +508,6 @@ final class RemoteFileBrowserViewController: UIViewController {
                         }
                     }
 
-                    // Mark as complete
                     await MainActor.run {
                         self.downloadingFiles.removeValue(forKey: remotePath)
                         self.completedDownloads.append(file.name)
@@ -1341,8 +1340,7 @@ final class FileItemCell: UICollectionViewCell {
     private let menuButton = UIButton()
     private let selectionOverlay = UIView()
     private let progressView = UIView()
-    private let progressLayer = CAShapeLayer()
-    private var currentProgress: CGFloat = 0
+    private var progressHeightConstraint: NSLayoutConstraint?
 
     weak var delegate: FileItemCellDelegate?
 
@@ -1389,25 +1387,13 @@ final class FileItemCell: UICollectionViewCell {
         selectionOverlay.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(selectionOverlay)
 
-        // Progress view - covers the entire cell
+        // Progress view - covers the entire cell, height controlled by constraint
         progressView.isHidden = true
+        progressView.backgroundColor = UIColor.white.withAlphaComponent(0.7)
         progressView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(progressView)
 
-        // Progress layer - circular stroke
-        let size: CGFloat = 64
-        let center = CGPoint(x: size / 2, y: size / 2)
-        let radius: CGFloat = size / 2 - 8
-
-        let path = UIBezierPath(arcCenter: center, radius: radius, startAngle: -.pi / 2, endAngle: .pi * 1.5, clockwise: true)
-        progressLayer.path = path.cgPath
-        progressLayer.fillColor = UIColor.clear.cgColor
-        progressLayer.strokeColor = UIColor.systemBlue.cgColor
-        progressLayer.lineWidth = 8
-        progressLayer.lineCap = .round
-        progressLayer.strokeEnd = 0
-        progressLayer.frame = CGRect(x: 0, y: 0, width: size, height: size)
-        progressView.layer.addSublayer(progressLayer)
+        progressHeightConstraint = progressView.heightAnchor.constraint(equalToConstant: 0)
 
         NSLayoutConstraint.activate([
             iconView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
@@ -1433,7 +1419,7 @@ final class FileItemCell: UICollectionViewCell {
             progressView.topAnchor.constraint(equalTo: contentView.topAnchor),
             progressView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             progressView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            progressView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            progressHeightConstraint!
         ])
     }
 
@@ -1470,19 +1456,24 @@ final class FileItemCell: UICollectionViewCell {
 
         selectionOverlay.isHidden = !isSelected
 
-        // Progress indicator
+        // Progress indicator - "roller blind" effect
         if let progress = progress {
             progressView.isHidden = false
-            progressLayer.strokeEnd = CGFloat(progress)
+            let cellHeight = max(contentView.bounds.height, 100)
+            let revealedHeight = cellHeight * CGFloat(progress)
+            progressHeightConstraint?.constant = cellHeight - revealedHeight
 
             menuButton.isEnabled = false
             menuButton.alpha = 0.5
         } else {
             progressView.isHidden = true
-            progressLayer.strokeEnd = 0
+            progressHeightConstraint?.constant = 0
 
             menuButton.isEnabled = true
             menuButton.alpha = 1.0
         }
+        // Force layout update
+        contentView.layoutIfNeeded()
     }
+
 }

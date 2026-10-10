@@ -97,16 +97,52 @@ public final class SFTPClientWrapper: SFTPClientProtocol {
         }
 
         do {
-            let buffer = try await sshClient.withSFTP { sftp in
-                try await sftp.withFile(filePath: remotePath, flags: .read) { file in
-                    try await file.readAll()
+            // Get file size first via listDirectory
+            let parentPath = (remotePath as NSString).deletingLastPathComponent
+            let fileName = (remotePath as NSString).lastPathComponent
+            let files = try await sshClient.withSFTP { sftp in
+                try await sftp.listDirectory(atPath: parentPath.isEmpty ? "/" : parentPath)
+            }
+
+            var totalBytes: Int64 = 0
+            for name in files {
+                for component in name.components {
+                    if component.filename == fileName {
+                        totalBytes = Int64(component.attributes.size ?? 0)
+                        break
+                    }
+                }
+                if totalBytes > 0 { break }
+            }
+
+            // Open file and read in chunks
+            let fileHandle = try await sshClient.withSFTP { sftp in
+                try await sftp.openFile(filePath: remotePath, flags: .read)
+            }
+
+            defer {
+                Task {
+                    try? await fileHandle.close()
                 }
             }
-            // Convert ByteBuffer to Data
-            var data = Data()
-            data.append(contentsOf: buffer.readableBytesView)
-            try data.write(to: localURL)
-            progress(SFTPProgress(bytesTransferred: Int64(data.count), totalBytes: Int64(data.count)))
+
+            let chunkSize = 65536 // 64KB chunks
+            var bytesTransferred: Int64 = 0
+            var outputData = Data()
+
+            while true {
+                let buffer = try await fileHandle.read(from: UInt64(bytesTransferred), length: UInt32(chunkSize))
+                if buffer.readableBytes == 0 { break }
+
+                let bytes = Data(buffer.readableBytesView)
+                outputData.append(bytes)
+                bytesTransferred += Int64(buffer.readableBytes)
+
+                let prog = SFTPProgress(bytesTransferred: bytesTransferred, totalBytes: totalBytes)
+                progress(prog)
+            }
+
+            try outputData.write(to: localURL)
         } catch {
             throw SFTPError.downloadFailed(error)
         }
