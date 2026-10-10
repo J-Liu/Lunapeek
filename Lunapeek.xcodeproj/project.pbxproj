@@ -9,20 +9,7 @@
 /* Begin PBXBuildFile section */
 		0814B82030778AFD00E664AE /* SMBClient in Frameworks */ = {isa = PBXBuildFile; productRef = 08A1B2C130744F0000000001 /* SMBClient */; };
 		0814B82130778AFD00E664AE /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 08A1B2C130744F0000000002 /* Citadel */; };
-		08BBEBDB307A4A3F005B4EC8 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08BBEBDA307A4A3F005B4EC8 /* WidgetKit.framework */; };
-		08BBEBDD307A4A3F005B4EC8 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08BBEBDC307A4A3F005B4EC8 /* SwiftUI.framework */; };
-		08BBEBEA307A4A40005B4EC8 /* LunapeekWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 08BBEBD8307A4A3F005B4EC8 /* LunapeekWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		08BBEBE8307A4A40005B4EC8 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 08F3D6B630733F2100B0FE4B /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 08BBEBD7307A4A3F005B4EC8;
-			remoteInfo = LunapeekWidgetExtension;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		08BBEBEB307A4A40005B4EC8 /* Embed Foundation Extensions */ = {
@@ -30,7 +17,6 @@
 			dstPath = "";
 			dstSubfolder = PlugIns;
 			files = (
-				08BBEBEA307A4A40005B4EC8 /* LunapeekWidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 		};
@@ -45,20 +31,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		08BBEBD8307A4A3F005B4EC8 /* LunapeekWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LunapeekWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		08BBEBDA307A4A3F005B4EC8 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		08BBEBDC307A4A3F005B4EC8 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		08F3D6BE30733F2100B0FE4B /* Lunapeek.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lunapeek.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		08BBEBEF307A4A40005B4EC8 /* Exceptions for "LunapeekWidget" folder in "LunapeekWidgetExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 08BBEBD7307A4A3F005B4EC8 /* LunapeekWidgetExtension */;
-		};
 		08F3D6D030733F2200B0FE4B /* Exceptions for "Lunapeek" folder in "Lunapeek" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -96,14 +74,6 @@
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		08BBEBDE307A4A3F005B4EC8 /* LunapeekWidget */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				08BBEBEF307A4A40005B4EC8 /* Exceptions for "LunapeekWidget" folder in "LunapeekWidgetExtension" target */,
-			);
-			path = LunapeekWidget;
-			sourceTree = "<group>";
-		};
 		08F3D6C030733F2100B0FE4B /* Lunapeek */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -116,13 +86,6 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		08BBEBD5307A4A3F005B4EC8 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			files = (
-				08BBEBDD307A4A3F005B4EC8 /* SwiftUI.framework in Frameworks */,
-				08BBEBDB307A4A3F005B4EC8 /* WidgetKit.framework in Frameworks */,
-			);
-		};
 		08F3D6BB30733F2100B0FE4B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -146,7 +109,6 @@
 			isa = PBXGroup;
 			children = (
 				08F3D6C030733F2100B0FE4B /* Lunapeek */,
-				08BBEBDE307A4A3F005B4EC8 /* LunapeekWidget */,
 				08BBEBD9307A4A3F005B4EC8 /* Frameworks */,
 				08F3D6BF30733F2100B0FE4B /* Products */,
 			);
@@ -156,7 +118,6 @@
 			isa = PBXGroup;
 			children = (
 				08F3D6BE30733F2100B0FE4B /* Lunapeek.app */,
-				08BBEBD8307A4A3F005B4EC8 /* LunapeekWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -164,24 +125,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		08BBEBD7307A4A3F005B4EC8 /* LunapeekWidgetExtension */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 08BBEBEE307A4A40005B4EC8 /* Build configuration list for PBXNativeTarget "LunapeekWidgetExtension" */;
-			buildPhases = (
-				08BBEBD4307A4A3F005B4EC8 /* Sources */,
-				08BBEBD5307A4A3F005B4EC8 /* Frameworks */,
-				08BBEBD6307A4A3F005B4EC8 /* Resources */,
-			);
-			buildRules = (
-			);
-			fileSystemSynchronizedGroups = (
-				08BBEBDE307A4A3F005B4EC8 /* LunapeekWidget */,
-			);
-			name = LunapeekWidgetExtension;
-			productName = LunapeekWidgetExtension;
-			productReference = 08BBEBD8307A4A3F005B4EC8 /* LunapeekWidgetExtension.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 		08F3D6BD30733F2100B0FE4B /* Lunapeek */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 08F3D6D130733F2200B0FE4B /* Build configuration list for PBXNativeTarget "Lunapeek" */;
@@ -193,9 +136,6 @@
 				08BBEBEB307A4A40005B4EC8 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
-			);
-			dependencies = (
-				08BBEBE9307A4A40005B4EC8 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				08F3D6C030733F2100B0FE4B /* Lunapeek */,
@@ -219,9 +159,6 @@
 				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
-					08BBEBD7307A4A3F005B4EC8 = {
-						CreatedOnToolsVersion = 27.0;
-					};
 					08F3D6BD30733F2100B0FE4B = {
 						CreatedOnToolsVersion = 27.0;
 					};
@@ -246,17 +183,11 @@
 			projectRoot = "";
 			targets = (
 				08F3D6BD30733F2100B0FE4B /* Lunapeek */,
-				08BBEBD7307A4A3F005B4EC8 /* LunapeekWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		08BBEBD6307A4A3F005B4EC8 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			files = (
-			);
-		};
 		08F3D6BC30733F2100B0FE4B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -265,11 +196,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		08BBEBD4307A4A3F005B4EC8 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			files = (
-			);
-		};
 		08F3D6BA30733F2100B0FE4B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -277,75 +203,7 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		08BBEBE9307A4A40005B4EC8 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 08BBEBD7307A4A3F005B4EC8 /* LunapeekWidgetExtension */;
-			targetProxy = 08BBEBE8307A4A40005B4EC8 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
-		08BBEBEC307A4A40005B4EC8 /* Debug configuration for PBXNativeTarget "LunapeekWidgetExtension" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ZP96MF9J4C;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = LunapeekWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = LunapeekWidget;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.JiaLiu.Lunapeek.LunapeekWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		08BBEBED307A4A40005B4EC8 /* Release configuration for PBXNativeTarget "LunapeekWidgetExtension" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ZP96MF9J4C;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = LunapeekWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = LunapeekWidget;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.JiaLiu.Lunapeek.LunapeekWidget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
 		08F3D6D230733F2200B0FE4B /* Debug configuration for PBXNativeTarget "Lunapeek" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -358,7 +216,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Lunapeek/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "This app needs to discover network file servers on your local network.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -394,7 +254,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Lunapeek/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "This app needs to discover network file servers on your local network.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -542,14 +404,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		08BBEBEE307A4A40005B4EC8 /* Build configuration list for PBXNativeTarget "LunapeekWidgetExtension" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				08BBEBEC307A4A40005B4EC8 /* Debug configuration for PBXNativeTarget "LunapeekWidgetExtension" */,
-				08BBEBED307A4A40005B4EC8 /* Release configuration for PBXNativeTarget "LunapeekWidgetExtension" */,
-			);
-			defaultConfigurationName = Release;
-		};
 		08F3D6B930733F2100B0FE4B /* Build configuration list for PBXProject "Lunapeek" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

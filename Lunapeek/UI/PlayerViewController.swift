@@ -7,8 +7,6 @@ import UIKit
 import AVFoundation
 import AVKit
 import MediaPlayer
-import ActivityKit
-import ActivityKit
 
 final class PlayerViewController: UIViewController {
     private let url: URL
@@ -19,9 +17,6 @@ final class PlayerViewController: UIViewController {
     private var proxyServer: HTTPProxyServer?
     private var timeObserver: Any?
     private var videoView: UIView!
-
-    // Live Activity
-    private var currentActivity: Activity<LunapeekWidgetAttributes>?
 
     private var controlView: UIView!
     private var playButton: UIButton!
@@ -110,6 +105,7 @@ final class PlayerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
         LogManager.shared.clear()
         LogManager.shared.handler = { [weak self] entry in
             DispatchQueue.main.async {
@@ -346,6 +342,11 @@ final class PlayerViewController: UIViewController {
         progressBar.value = 0
         progressBar.tintColor = .systemBlue
         progressBar.addTarget(self, action: #selector(progressChanged), for: .valueChanged)
+
+        // Add tap gesture for jumping to position (iOS 18+)
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(progressBarTapped(_:)))
+        progressBar.addGestureRecognizer(tapGesture)
+
         progressBar.translatesAutoresizingMaskIntoConstraints = false
         bottomControls.addSubview(progressBar)
 
@@ -1004,8 +1005,6 @@ final class PlayerViewController: UIViewController {
         updateProgress()
         updateNowPlayingInfo()
 
-        // Start Live Activity for Dynamic Island
-        startLiveActivity()
     }
 
     // MARK: - Navigation
@@ -1166,8 +1165,6 @@ final class PlayerViewController: UIViewController {
         // Update progress initially
         updateProgress()
 
-        // Start Live Activity for Dynamic Island
-        startLiveActivity()
     }
 
     @objc private func playerDidFinishPlaying() {
@@ -1289,124 +1286,6 @@ final class PlayerViewController: UIViewController {
         } catch {
             print("Failed to activate audio session: \(error)")
         }
-    }
-
-    // MARK: - Live Activity
-
-    private func startLiveActivity() {
-        log("📱 Trying to start Live Activity...")
-
-        // Check if Live Activities are enabled
-        let authInfo = ActivityAuthorizationInfo()
-        log("📱 Live Activities enabled: \(authInfo.areActivitiesEnabled)")
-
-        guard authInfo.areActivitiesEnabled else {
-            log("📱 Live Activities not enabled in settings")
-            return
-        }
-
-        let attributes = LunapeekWidgetAttributes(name: "Lunapeek")
-
-        guard let player = avQueuePlayer, let currentItem = player.currentItem else {
-            log("📱 No player or current item")
-            return
-        }
-
-        let currentUrl = url
-        let title = currentUrl.deletingPathExtension().lastPathComponent
-
-        // Wait for duration to be available
-        var duration = currentItem.duration.seconds
-        if duration <= 0 || duration.isNaN {
-            duration = 60.0  // Default duration if not loaded yet
-            log("📱 Duration not loaded yet, using default: \(duration)")
-        }
-
-        let isVideo = currentUrl.pathExtension.lowercased() != "mp3" && currentUrl.pathExtension.lowercased() != "m4a"
-
-        // Get file size
-        var fileSize = "Unknown"
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: currentUrl.path),
-           let size = attrs[.size] as? Int64 {
-            fileSize = formatFileSize(size)
-        }
-
-        let initialState = LunapeekWidgetAttributes.ContentState(
-            title: title,
-            duration: duration,
-            currentTime: 0,
-            isPlaying: true,
-            fileSize: fileSize,
-            isVideo: isVideo,
-            thumbnailData: nil
-        )
-
-        do {
-            let activity = try Activity.request(
-                attributes: attributes,
-                content: .init(state: initialState, staleDate: nil),
-                pushType: nil
-            )
-            currentActivity = activity
-            log("📱 Live Activity started successfully: \(activity.id)")
-        } catch {
-            log("📱 Failed to start Live Activity: \(error.localizedDescription)")
-        }
-    }
-
-    private func updateLiveActivity() {
-        guard let activity = currentActivity,
-              let player = avQueuePlayer,
-              let currentItem = player.currentItem else { return }
-
-        let currentTime = player.currentTime().seconds
-        let duration = currentItem.duration.seconds
-        let isPlaying = player.timeControlStatus == .playing
-
-        let state = LunapeekWidgetAttributes.ContentState(
-            title: url.deletingPathExtension().lastPathComponent,
-            duration: duration,
-            currentTime: currentTime,
-            isPlaying: isPlaying,
-            fileSize: "Unknown",
-            isVideo: true,
-            thumbnailData: nil
-        )
-
-        Task {
-            await activity.update(
-                ActivityContent(state: state, staleDate: nil)
-            )
-        }
-    }
-
-    private func endLiveActivity() {
-        guard let activity = currentActivity else { return }
-
-        let finalState = LunapeekWidgetAttributes.ContentState(
-            title: "Finished",
-            duration: 0,
-            currentTime: 0,
-            isPlaying: false,
-            fileSize: "",
-            isVideo: false,
-            thumbnailData: nil
-        )
-
-        Task {
-            await activity.end(
-                ActivityContent(state: finalState, staleDate: nil),
-                dismissalPolicy: .immediate
-            )
-        }
-        currentActivity = nil
-    }
-
-    private func formatFileSize(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
     }
 
     private func setupRemoteControls() {
@@ -1742,9 +1621,6 @@ final class PlayerViewController: UIViewController {
     }
 
     private func cleanupAndDismiss() {
-        // End Live Activity
-        endLiveActivity()
-
         if let observer = timeObserver {
             avQueuePlayer?.removeTimeObserver(observer)
             timeObserver = nil
@@ -1829,6 +1705,30 @@ final class PlayerViewController: UIViewController {
         resetControlsHideTimer()
     }
 
+    @objc private func progressBarTapped(_ gesture: UITapGestureRecognizer) {
+        guard let player = avQueuePlayer else { return }
+
+        let location = gesture.location(in: progressBar)
+        let percentage = Double(location.x / progressBar.bounds.width)
+        let clampedPercentage = max(0, min(1, percentage))
+
+        let duration = player.currentItem?.duration.seconds ?? 0
+        guard duration > 0 else { return }
+
+        let targetTime = duration * clampedPercentage
+        let cmTime = CMTime(seconds: targetTime, preferredTimescale: 600)
+        player.seek(to: cmTime)
+
+        // Update slider visual
+        progressBar.value = Float(clampedPercentage * 100)
+
+        // Show time indicator
+        showSeekIndicator(seconds: targetTime)
+
+        // Reset controls hide timer
+        resetControlsHideTimer()
+    }
+
     private func updateProgress() {
         guard let player = avQueuePlayer else { return }
 
@@ -1843,11 +1743,8 @@ final class PlayerViewController: UIViewController {
             let durationStr = formatTime(duration)
             timeLabel.text = "\(currentStr) / \(durationStr)"
 
-            // Update now playing info for Dynamic Island
+            // Update now playing info
             updateNowPlayingInfo()
-
-            // Update Live Activity
-            updateLiveActivity()
         }
     }
 

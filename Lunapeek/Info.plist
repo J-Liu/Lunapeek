@@ -33,7 +33,7 @@
 	<array>
 		<string>audio</string>
 	</array>
-	<key>NSSupportsLiveActivities</key>
+	<key>UIFileSharingEnabled</key>
 	<true/>
 </dict>
 </plist>
