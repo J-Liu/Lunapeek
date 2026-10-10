@@ -273,8 +273,9 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         let items = Language.allCases.map { $0.displayName }
         let selectedIndex = Language.allCases.firstIndex(of: Settings.shared.language) ?? 0
         showPicker(title: NSLocalizedString("Language", comment: ""), items: items, selectedIndex: selectedIndex) { index in
-            Settings.shared.language = Language.allCases[index]
-            self.tableView.reloadData()
+            let language = Language.allCases[index]
+            Settings.shared.language = language
+            LanguageManager.shared.applyLanguage(language)
         }
     }
 
