@@ -138,6 +138,11 @@
 /* More */
 "Not Implemented" = "Not Implemented";
 "Rename feature coming soon" = "Rename feature coming soon";
-"Move feature coming soon" = "Move feature coming soon";
+"Move feature coming soon" = "Move coming soon";
 "Copy feature coming soon" = "Copy feature coming soon";
 "Duplicate feature coming soon" = "Duplicate feature coming soon";
+
+/* Context Menu */
+"Move to" = "Move to";
+"Copy to" = "Copy to";
+"Duplicate" = "Duplicate";

@@ -596,17 +596,17 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
 
         // Group 2: File operations (no Download for local files)
         let group2 = createMenuGroup(actions: [
-            ("pencil", "Rename", { [weak self] in self?.renameItem(item) }, false),
-            ("folder", "Move to", { [weak self] in self?.moveItem(item) }, false),
-            ("doc.on.doc", "Copy to", { [weak self] in self?.copyItem(item) }, false),
-            ("plus.square.on.square", "Duplicate", { [weak self] in self?.duplicateItem(item) }, false),
-            ("trash", "Delete", { [weak self] in self?.confirmDelete(item: item) }, true)
+            ("pencil", NSLocalizedString("Rename", comment: ""), { [weak self] in self?.renameItem(item) }, false),
+            ("folder", NSLocalizedString("Move to", comment: ""), { [weak self] in self?.moveItem(item) }, false),
+            ("doc.on.doc", NSLocalizedString("Copy to", comment: ""), { [weak self] in self?.copyItem(item) }, false),
+            ("plus.square.on.square", NSLocalizedString("Duplicate", comment: ""), { [weak self] in self?.duplicateItem(item) }, false),
+            ("trash", NSLocalizedString("Delete", comment: ""), { [weak self] in self?.confirmDelete(item: item) }, true)
         ])
         stackView.addArrangedSubview(group2)
 
         // Group 3: Info
         let group3 = createMenuGroup(actions: [
-            ("info.circle", "Show Info", { [weak self] in self?.showInfo(for: item) }, false)
+            ("info.circle", NSLocalizedString("Show Info", comment: ""), { [weak self] in self?.showInfo(for: item) }, false)
         ])
         stackView.addArrangedSubview(group3)
 

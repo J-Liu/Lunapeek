@@ -140,3 +140,8 @@
 "Move feature coming soon" = "移动功能即将推出";
 "Copy feature coming soon" = "复制功能即将推出";
 "Duplicate feature coming soon" = "复制功能即将推出";
+
+/* Context Menu */
+"Move to" = "移动到";
+"Copy to" = "复制到";
+"Duplicate" = "创建副本";

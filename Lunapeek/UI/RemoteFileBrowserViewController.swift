@@ -618,7 +618,8 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
 
         // "Download complete" label
         let label = UILabel()
-        label.text = "Downloaded \(files.count) file(s)"
+        let format = NSLocalizedString("Downloaded %d file(s)", comment: "")
+        label.text = String(format: format, files.count)
         label.font = .systemFont(ofSize: 15, weight: .medium)
         label.textColor = .black
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -626,7 +627,7 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
 
         // "View Now" button (blue, link-like)
         let viewButton = UIButton(type: .system)
-        viewButton.setTitle("View Now", for: .normal)
+        viewButton.setTitle(NSLocalizedString("View Now", comment: ""), for: .normal)
         viewButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
         viewButton.setTitleColor(.systemBlue, for: .normal)
         viewButton.addTarget(self, action: #selector(viewDownloadedFiles), for: .touchUpInside)
@@ -1007,18 +1008,18 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
 
         // Group 2: File operations
         let group2 = createMenuGroup(actions: [
-            ("arrow.down.circle", "Download", { [weak self] in self?.downloadItem(item) }, false),
-            ("pencil", "Rename", { [weak self] in self?.renameItem(item) }, false),
-            ("folder", "Move to", { [weak self] in self?.moveItem(item) }, false),
-            ("doc.on.doc", "Copy to", { [weak self] in self?.copyItem(item) }, false),
-            ("plus.square.on.square", "Duplicate", { [weak self] in self?.duplicateItem(item) }, false),
-            ("trash", "Delete", { [weak self] in self?.confirmDeleteItem(item, at: indexPath) }, true)
+            ("arrow.down.circle", NSLocalizedString("Download", comment: ""), { [weak self] in self?.downloadItem(item) }, false),
+            ("pencil", NSLocalizedString("Rename", comment: ""), { [weak self] in self?.renameItem(item) }, false),
+            ("folder", NSLocalizedString("Move to", comment: ""), { [weak self] in self?.moveItem(item) }, false),
+            ("doc.on.doc", NSLocalizedString("Copy to", comment: ""), { [weak self] in self?.copyItem(item) }, false),
+            ("plus.square.on.square", NSLocalizedString("Duplicate", comment: ""), { [weak self] in self?.duplicateItem(item) }, false),
+            ("trash", NSLocalizedString("Delete", comment: ""), { [weak self] in self?.confirmDeleteItem(item, at: indexPath) }, true)
         ])
         stackView.addArrangedSubview(group2)
 
         // Group 3: Info
         let group3 = createMenuGroup(actions: [
-            ("info.circle", "Show Info", { [weak self] in self?.showInfo(for: item) }, false)
+            ("info.circle", NSLocalizedString("Show Info", comment: ""), { [weak self] in self?.showInfo(for: item) }, false)
         ])
         stackView.addArrangedSubview(group3)
 
