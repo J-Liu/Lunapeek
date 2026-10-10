@@ -46,27 +46,29 @@ final class SettingsViewController: UIViewController {
 
 extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
     func numberOfSections(in tableView: UITableView) -> Int {
-        return 5
+        return 6
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
-        case 0: return 4 // File Browser
-        case 1: return 4 // Playback
-        case 2: return 1 // Video (only aspect ratio now)
-        case 3: return 1 // Language
-        case 4: return 2 // About
+        case 0: return 1 // Language
+        case 1: return 4 // File Browser
+        case 2: return 1 // Video
+        case 3: return 1 // Audio
+        case 4: return 3 // Playback (repeat mode, auto play next, exit behavior)
+        case 5: return 2 // About
         default: return 0
         }
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch section {
-        case 0: return NSLocalizedString("File Browser", comment: "")
-        case 1: return NSLocalizedString("Playback", comment: "")
+        case 0: return NSLocalizedString("Language", comment: "")
+        case 1: return NSLocalizedString("File Browser", comment: "")
         case 2: return NSLocalizedString("Video", comment: "")
-        case 3: return NSLocalizedString("Language", comment: "")
-        case 4: return NSLocalizedString("About", comment: "")
+        case 3: return NSLocalizedString("Audio", comment: "")
+        case 4: return NSLocalizedString("Playback", comment: "")
+        case 5: return NSLocalizedString("About", comment: "")
         default: return nil
         }
     }
@@ -76,7 +78,13 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         cell.selectionStyle = .none
 
         switch indexPath.section {
-        case 0: // File Browser
+        case 0: // Language
+            cell.textLabel?.text = NSLocalizedString("Language", comment: "")
+            cell.detailTextLabel?.text = Settings.shared.language.displayName
+            cell.selectionStyle = .default
+            cell.accessoryType = .disclosureIndicator
+
+        case 1: // File Browser
             switch indexPath.row {
             case 0:
                 cell.textLabel?.text = NSLocalizedString("Show Hidden Files", comment: "")
@@ -103,26 +111,33 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             default: break
             }
 
-        case 1: // Playback
+        case 2: // Video
+            cell.textLabel?.text = NSLocalizedString("Default Aspect Ratio", comment: "")
+            cell.detailTextLabel?.text = Settings.shared.defaultAspectRatio.displayName
+            cell.selectionStyle = .default
+            cell.accessoryType = .disclosureIndicator
+
+        case 3: // Audio
+            cell.textLabel?.text = NSLocalizedString("Audio Background Play", comment: "")
+            let toggle = UISwitch()
+            toggle.isOn = Settings.shared.backgroundPlay
+            toggle.addTarget(self, action: #selector(backgroundPlayChanged(_:)), for: .valueChanged)
+            cell.accessoryView = toggle
+
+        case 4: // Playback
             switch indexPath.row {
             case 0:
+                cell.textLabel?.text = NSLocalizedString("Repeat Mode", comment: "")
+                cell.detailTextLabel?.text = Settings.shared.repeatMode.displayName
+                cell.selectionStyle = .default
+                cell.accessoryType = .disclosureIndicator
+            case 1:
                 cell.textLabel?.text = NSLocalizedString("Auto Play Next", comment: "")
                 let toggle = UISwitch()
                 toggle.isOn = Settings.shared.autoPlayNext
                 toggle.addTarget(self, action: #selector(autoPlayNextChanged(_:)), for: .valueChanged)
                 cell.accessoryView = toggle
-            case 1:
-                cell.textLabel?.text = NSLocalizedString("Repeat Mode", comment: "")
-                cell.detailTextLabel?.text = Settings.shared.repeatMode.displayName
-                cell.selectionStyle = .default
-                cell.accessoryType = .disclosureIndicator
             case 2:
-                cell.textLabel?.text = NSLocalizedString("Audio Background Play", comment: "")
-                let toggle = UISwitch()
-                toggle.isOn = Settings.shared.backgroundPlay
-                toggle.addTarget(self, action: #selector(backgroundPlayChanged(_:)), for: .valueChanged)
-                cell.accessoryView = toggle
-            case 3:
                 cell.textLabel?.text = NSLocalizedString("Exit Behavior", comment: "")
                 cell.detailTextLabel?.text = Settings.shared.exitBehavior.displayName
                 cell.selectionStyle = .default
@@ -130,23 +145,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             default: break
             }
 
-        case 2: // Video
-            switch indexPath.row {
-            case 0:
-                cell.textLabel?.text = NSLocalizedString("Default Aspect Ratio", comment: "")
-                cell.detailTextLabel?.text = Settings.shared.defaultAspectRatio.displayName
-                cell.selectionStyle = .default
-                cell.accessoryType = .disclosureIndicator
-            default: break
-            }
-
-        case 3: // Language
-            cell.textLabel?.text = NSLocalizedString("Language", comment: "")
-            cell.detailTextLabel?.text = Settings.shared.language.displayName
-            cell.selectionStyle = .default
-            cell.accessoryType = .disclosureIndicator
-
-        case 4: // About
+        case 5: // About
             switch indexPath.row {
             case 0:
                 cell.textLabel?.text = NSLocalizedString("Version", comment: "")
