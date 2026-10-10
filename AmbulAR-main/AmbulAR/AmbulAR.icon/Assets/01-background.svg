@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFB03A"/>
+      <stop offset="55%" stop-color="#F08A00"/>
+      <stop offset="100%" stop-color="#C96A00"/>
+    </linearGradient>
+
+    <pattern id="dotGrid" x="0" y="0" width="48" height="48"
+             patternUnits="userSpaceOnUse">
+      <circle cx="24" cy="24" r="2.2" fill="#FFFFFF" opacity="0.10"/>
+    </pattern>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bgGrad)"/>
+
+  <rect width="1024" height="1024" fill="url(#dotGrid)"/>
+</svg>

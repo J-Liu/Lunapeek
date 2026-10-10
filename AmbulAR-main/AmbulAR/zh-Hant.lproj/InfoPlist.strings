@@ -1,0 +1,4 @@
+/* AmbulAR Info.plist 繁体中文本地化 */
+
+"NSCameraUsageDescription" = "AmbulAR 需要相機權限來在擴增實境中追蹤您的移動。";
+"NSMotionUsageDescription" = "AmbulAR 需要運動數據來提高距離追蹤精度。";

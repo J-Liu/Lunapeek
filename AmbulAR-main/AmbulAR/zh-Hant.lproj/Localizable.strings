@@ -1,0 +1,46 @@
+/* AmbulAR 繁体中文本地化 */
+
+/* Common */
+"Start" = "開始";
+"Pause" = "暫停";
+"Continue" = "繼續";
+"Finish" = "結束";
+"Reset" = "重設";
+"Done" = "完成";
+
+/* Distance Units */
+"Meters" = "公尺";
+"Kilometers" = "公里";
+"Feet" = "英尺";
+"Miles" = "英哩";
+
+/* Result Screen */
+"Tracking Complete" = "追蹤完成";
+"Display Unit" = "顯示單位";
+
+/* Tracking Quality Messages */
+"Moving too fast. Tracking quality reduced." = "移動過快，追蹤品質下降。";
+"Low visual features. Tracking quality reduced." = "視覺特徵不足，追蹤品質下降。";
+"Recovering tracking. Please wait." = "正在恢復追蹤，請稍候。";
+"Initializing tracking. Please wait." = "正在初始化追蹤，請稍候。";
+"Tracking quality reduced." = "追蹤品質下降。";
+"Tracking lost. Please restart session." = "追蹤丟失，請重新開始。";
+
+/* Marker Labels */
+"Start Point" = "起點";
+"Pause Point" = "暫停";
+"Resume Point" = "繼續";
+"Finish Point" = "終點";
+
+/* Settings */
+"Settings" = "設定";
+"Language" = "語言";
+"System Default" = "跟隨系統";
+"English" = "英文";
+"Simplified Chinese" = "簡體中文";
+"Traditional Chinese" = "繁體中文";
+"Language changed. Restart the app to apply." = "語言已更改，重啟應用程式以生效。";
+"Hand Preference" = "慣用手";
+"Right-handed" = "右撇子";
+"Left-handed" = "左撇子";
+"About" = "關於";

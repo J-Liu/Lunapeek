@@ -1108,7 +1108,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
             details.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
         }
         if let modified = item.modified {
-            let formatter = makeDateFormatter()
+            let formatter = DateFormatter()
             formatter.dateStyle = .medium
             formatter.timeStyle = .short
             details.append(formatter.string(from: modified))
@@ -1348,7 +1348,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
         }
 
         if let modified = item.modified {
-            let formatter = makeDateFormatter()
+            let formatter = DateFormatter()
             formatter.dateStyle = .full
             formatter.timeStyle = .long
             info += "Modified: \(formatter.string(from: modified))"

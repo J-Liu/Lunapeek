@@ -40,19 +40,6 @@ enum Language: String, CaseIterable {
         }
     }
 
-    /// Returns the language code for bundle switching
-    var languageCode: String? {
-        switch self {
-        case .system:
-            return nil  // Use system default
-        case .english:
-            return "en"
-        case .simplifiedChinese:
-            return "zh-Hans"
-        case .traditionalChinese:
-            return "zh-Hant"
-        }
-    }
 }
 
 final class LanguageManager {
@@ -66,7 +53,7 @@ final class LanguageManager {
         UserDefaults.standard.synchronize()
 
         // Apply language using Bundle extension for real-time switching
-        Bundle.setLanguage(language.languageCode)
+        Bundle.setLanguage(language)
 
         NotificationCenter.default.post(name: .languageChanged, object: nil)
     }
@@ -83,11 +70,4 @@ extension Notification.Name {
 
 func L(_ key: String) -> String {
     return NSLocalizedString(key, comment: "")
-}
-
-/// Create a DateFormatter with current language locale
-func makeDateFormatter() -> DateFormatter {
-    let formatter = DateFormatter()
-    formatter.locale = LanguageManager.shared.currentLanguage.locale
-    return formatter
 }

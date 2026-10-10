@@ -1,0 +1,4 @@
+/* AmbulAR Info.plist English Localization */
+
+"NSCameraUsageDescription" = "AmbulAR needs camera access to track your movement in augmented reality.";
+"NSMotionUsageDescription" = "AmbulAR needs motion data to improve distance tracking accuracy.";

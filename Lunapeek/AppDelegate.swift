@@ -14,8 +14,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // This prevents interrupting other audio apps (like TikTok, music players)
 
         // Initialize language
-        let language = LanguageManager.shared.currentLanguage
-        Bundle.setLanguage(language.locale?.identifier)
+        Bundle.setLanguage(LanguageManager.shared.currentLanguage)
 
         // Listen for language changes
         NotificationCenter.default.addObserver(

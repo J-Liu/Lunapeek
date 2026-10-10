@@ -1,0 +1,46 @@
+/* AmbulAR English Localization */
+
+/* Common */
+"Start" = "Start";
+"Pause" = "Pause";
+"Continue" = "Continue";
+"Finish" = "Finish";
+"Reset" = "Reset";
+"Done" = "Done";
+
+/* Distance Units */
+"Meters" = "Meters";
+"Kilometers" = "Kilometers";
+"Feet" = "Feet";
+"Miles" = "Miles";
+
+/* Result Screen */
+"Tracking Complete" = "Tracking Complete";
+"Display Unit" = "Display Unit";
+
+/* Tracking Quality Messages */
+"Moving too fast. Tracking quality reduced." = "Moving too fast. Tracking quality reduced.";
+"Low visual features. Tracking quality reduced." = "Low visual features. Tracking quality reduced.";
+"Recovering tracking. Please wait." = "Recovering tracking. Please wait.";
+"Initializing tracking. Please wait." = "Initializing tracking. Please wait.";
+"Tracking quality reduced." = "Tracking quality reduced.";
+"Tracking lost. Please restart session." = "Tracking lost. Please restart session.";
+
+/* Marker Labels */
+"Start Point" = "Start";
+"Pause Point" = "Pause";
+"Resume Point" = "Resume";
+"Finish Point" = "Finish";
+
+/* Settings */
+"Settings" = "Settings";
+"Language" = "Language";
+"System Default" = "System Default";
+"English" = "English";
+"Simplified Chinese" = "Simplified Chinese";
+"Traditional Chinese" = "Traditional Chinese";
+"Language changed. Restart the app to apply." = "Language changed. Restart the app to apply.";
+"Hand Preference" = "Hand Preference";
+"Right-handed" = "Right-handed";
+"Left-handed" = "Left-handed";
+"About" = "About";
