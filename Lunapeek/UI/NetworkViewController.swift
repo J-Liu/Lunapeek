@@ -33,6 +33,18 @@ final class NetworkViewController: UIViewController {
         setupUI()
         loadSavedServers()
         startDiscovery()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageDidChange),
+            name: .languageChanged,
+            object: nil
+        )
+    }
+
+    @objc private func languageDidChange() {
+        title = NSLocalizedString("Network", comment: "")
+        tableView.reloadData()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -41,7 +53,7 @@ final class NetworkViewController: UIViewController {
     }
 
     private func setupUI() {
-        title = "Network"
+        title = NSLocalizedString("Network", comment: "")
         view.backgroundColor = .systemBackground
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(

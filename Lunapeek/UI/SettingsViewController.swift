@@ -21,6 +21,7 @@ final class SettingsViewController: UIViewController {
     }
 
     @objc private func languageDidChange() {
+        title = NSLocalizedString("Settings", comment: "")
         tableView.reloadData()
     }
 

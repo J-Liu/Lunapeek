@@ -105,6 +105,18 @@ final class PlaylistViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageDidChange),
+            name: .languageChanged,
+            object: nil
+        )
+    }
+
+    @objc private func languageDidChange() {
+        title = NSLocalizedString("Playlist", comment: "")
+        tableView.reloadData()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -113,7 +125,7 @@ final class PlaylistViewController: UIViewController {
     }
 
     private func setupUI() {
-        title = "Playlist"
+        title = NSLocalizedString("Playlist", comment: "")
         view.backgroundColor = .systemBackground
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(
