@@ -463,18 +463,17 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard isSelecting else { return }
 
-        let location = gesture.location(in: collectionView)
-        let pointInCollectionView = collectionView.convert(location, from: view)
+        let point = gesture.location(in: collectionView)
 
         switch gesture.state {
         case .began:
-            if let indexPath = collectionView.indexPathForItem(at: pointInCollectionView) {
+            if let indexPath = collectionView.indexPathForItem(at: point) {
                 swipeSelectingStartIndex = indexPath.item
             }
-            handleLocalSelection(at: pointInCollectionView, from: swipeSelectingStartIndex)
+            handleLocalSelection(at: point, from: swipeSelectingStartIndex)
         case .changed:
-            handleAutoScroll(at: location)
-            handleLocalSelection(at: pointInCollectionView, from: swipeSelectingStartIndex)
+            handleAutoScroll(at: gesture.location(in: view))
+            handleLocalSelection(at: point, from: swipeSelectingStartIndex)
         case .ended, .cancelled:
             swipeSelectingStartIndex = nil
             autoScrollTimer?.invalidate()

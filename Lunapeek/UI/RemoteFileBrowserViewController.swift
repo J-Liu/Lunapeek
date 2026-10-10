@@ -883,20 +883,19 @@ extension RemoteFileBrowserViewController: UICollectionViewDataSource, UICollect
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard isSelecting else { return }
 
-        let location = gesture.location(in: collectionView)
-        let pointInCollectionView = collectionView.convert(location, from: view)
+        let point = gesture.location(in: collectionView)
 
         switch gesture.state {
         case .began:
             // Record starting index
-            if let indexPath = collectionView.indexPathForItem(at: pointInCollectionView) {
+            if let indexPath = collectionView.indexPathForItem(at: point) {
                 swipeSelectingStartIndex = indexPath.item
             }
-            handlePanSelection(at: pointInCollectionView, from: swipeSelectingStartIndex)
+            handlePanSelection(at: point, from: swipeSelectingStartIndex)
         case .changed:
             // Auto-scroll at edges
-            handleAutoScroll(at: location)
-            handlePanSelection(at: pointInCollectionView, from: swipeSelectingStartIndex)
+            handleAutoScroll(at: gesture.location(in: view))
+            handlePanSelection(at: point, from: swipeSelectingStartIndex)
         case .ended, .cancelled:
             swipeSelectingStartIndex = nil
             autoScrollTimer?.invalidate()
