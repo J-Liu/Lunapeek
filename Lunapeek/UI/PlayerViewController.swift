@@ -11,7 +11,7 @@ import MediaPlayer
 final class PlayerViewController: UIViewController {
     private let url: URL
     private var playerEngine: PlayerEngine?
-    private var avPlayer: AVPlayer?
+    private var avQueuePlayer: AVQueuePlayer?
     private var avPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
     private var proxyServer: HTTPProxyServer?
@@ -94,7 +94,7 @@ final class PlayerViewController: UIViewController {
         LogManager.shared.handler = nil
         // Remove observer first (safe even if player is gone)
         if let observer = timeObserver {
-            avPlayer?.removeTimeObserver(observer)
+            avQueuePlayer?.removeTimeObserver(observer)
             timeObserver = nil
         }
         // Stop proxy server
@@ -145,17 +145,17 @@ final class PlayerViewController: UIViewController {
 
     @objc private func appWillResignActive() {
         // For pause mode, just pause (no PiP since pipController is not created)
-        guard avPlayer != nil else { return }
+        guard avQueuePlayer != nil else { return }
         guard Settings.shared.exitBehavior == .pause else { return }
 
-        avPlayer?.pause()
+        avQueuePlayer?.pause()
         isPaused = true
         setPlayButtonIcon(isPlaying: false)
         updateCenterButtons()
     }
 
     @objc private func appDidEnterBackground() {
-        guard avPlayer != nil else { return }
+        guard avQueuePlayer != nil else { return }
 
         let exitBehavior = Settings.shared.exitBehavior
         switch exitBehavior {
@@ -185,7 +185,7 @@ final class PlayerViewController: UIViewController {
         }
 
         // Restore player layer for background mode
-        if Settings.shared.exitBehavior == .background, avPlayerLayer == nil, let player = avPlayer {
+        if Settings.shared.exitBehavior == .background, avPlayerLayer == nil, let player = avQueuePlayer {
             let playerLayer = AVPlayerLayer(player: player)
             playerLayer.frame = videoView.bounds
             playerLayer.videoGravity = Settings.shared.defaultAspectRatio.videoGravity
@@ -755,7 +755,7 @@ final class PlayerViewController: UIViewController {
 
     @objc private func backwardTapped() {
         resetControlsHideTimer()
-        guard let player = avPlayer else { return }
+        guard let player = avQueuePlayer else { return }
         let currentTime = player.currentTime().seconds
         let newTime = max(0, currentTime - 10)
         let time = CMTime(seconds: newTime, preferredTimescale: 600)
@@ -764,7 +764,7 @@ final class PlayerViewController: UIViewController {
 
     @objc private func forwardTapped() {
         resetControlsHideTimer()
-        guard let player = avPlayer else { return }
+        guard let player = avQueuePlayer else { return }
         let currentTime = player.currentTime().seconds
         let duration = player.currentItem?.duration.seconds ?? 0
         let newTime = min(duration, currentTime + 10)
@@ -819,7 +819,7 @@ final class PlayerViewController: UIViewController {
     @objc private func speedSelected(_ button: UIButton) {
         let rate = Float(button.tag) / 100.0
         currentRate = rate
-        avPlayer?.rate = rate
+        avQueuePlayer?.rate = rate
         speedButton.setTitle(rate == 1.0 ? "1x" : "\(rate)x", for: .normal)
         speedPopupView?.removeFromSuperview()
         speedPopupView = nil
@@ -838,7 +838,7 @@ final class PlayerViewController: UIViewController {
     @objc private func centerPlayTapped() {
         resetControlsHideTimer()
 
-        if let player = avPlayer {
+        if let player = avQueuePlayer {
             if player.timeControlStatus == .playing {
                 player.pause()
                 isPaused = true
@@ -907,7 +907,7 @@ final class PlayerViewController: UIViewController {
 
         // Remove old time observer first
         if let observer = timeObserver {
-            avPlayer?.removeTimeObserver(observer)
+            avQueuePlayer?.removeTimeObserver(observer)
             timeObserver = nil
         }
 
@@ -928,13 +928,27 @@ final class PlayerViewController: UIViewController {
         avPlayerLayer = nil
 
         // Stop current player
-        avPlayer?.pause()
-        avPlayer = nil
+        avQueuePlayer?.pause()
+        avQueuePlayer = nil
 
-        // Create new player for the file
-        let playerItem = AVPlayerItem(url: url)
-        let player = AVPlayer(playerItem: playerItem)
-        avPlayer = player
+        // Build queue from currentIndex (find index for the URL)
+        var items: [AVPlayerItem] = []
+        if let playlist = playlist {
+            // Find the index of the URL in playlist
+            if let idx = playlist.firstIndex(of: url) {
+                currentIndex = idx
+            }
+            for i in currentIndex..<playlist.count {
+                items.append(AVPlayerItem(url: playlist[i]))
+            }
+        } else {
+            items.append(AVPlayerItem(url: url))
+        }
+
+        // Create new AVQueuePlayer with queue from current position
+        let player = AVQueuePlayer(items: items)
+        player.actionAtItemEnd = .advance
+        avQueuePlayer = player
 
         // Only activate audio session, don't reconfigure in background
         let isInBackground = UIApplication.shared.applicationState == .background
@@ -964,12 +978,12 @@ final class PlayerViewController: UIViewController {
             self?.updateProgress()
         }
 
-        // Observe end
+        // Observe end - use nil to receive all items
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(playerDidFinishPlaying),
             name: .AVPlayerItemDidPlayToEndTime,
-            object: playerItem
+            object: nil
         )
 
         // Play and apply current playback rate
@@ -1089,8 +1103,22 @@ final class PlayerViewController: UIViewController {
     }
 
     private func setupAVPlayer() {
-        let player = AVPlayer(url: url)
-        avPlayer = player
+        // Create player items starting from currentIndex
+        var items: [AVPlayerItem] = []
+        if let playlist = playlist {
+            for i in currentIndex..<playlist.count {
+                items.append(AVPlayerItem(url: playlist[i]))
+            }
+        } else {
+            items.append(AVPlayerItem(url: url))
+        }
+
+        // Create AVQueuePlayer with items starting from current position
+        let player = AVQueuePlayer(items: items)
+        avQueuePlayer = player
+
+        // We handle repeat/auto-play logic ourselves
+        player.actionAtItemEnd = .advance
 
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.frame = videoView.bounds
@@ -1117,12 +1145,12 @@ final class PlayerViewController: UIViewController {
             self,
             selector: #selector(playerDidFinishPlaying),
             name: .AVPlayerItemDidPlayToEndTime,
-            object: player.currentItem
+            object: nil
         )
 
         activateAudioSession()
         player.play()
-        log("✅ AVPlayer started")
+        log("✅ AVQueuePlayer started with items")
         setPlayButtonIcon(isPlaying: true)
 
         // Update progress initially
@@ -1138,41 +1166,92 @@ final class PlayerViewController: UIViewController {
         switch repeatMode {
         case .one:
             // Repeat current video
-            avPlayer?.seek(to: .zero)
-            avPlayer?.play()
+            avQueuePlayer?.seek(to: .zero)
+            avQueuePlayer?.play()
             log("Repeating current video")
 
         case .all:
-            // Play next video in playlist, or loop to first
-            if let playlist = playlist, playlist.count > 1 {
-                let nextIndex = (currentIndex + 1) % playlist.count
-                log("▶️ Playing next (all): index \(nextIndex)")
-                playNext(url: playlist[nextIndex], index: nextIndex)
+            // AVQueuePlayer auto-advances via actionAtItemEnd = .advance
+            // Just track the index
+            if let playlist = playlist, currentIndex + 1 >= playlist.count {
+                // At the end, loop back to beginning
+                currentIndex = 0
+                rebuildQueueAndPlay()
             } else {
-                avPlayer?.seek(to: .zero)
-                avPlayer?.play()
+                currentIndex += 1
+                updateNavigationButtons()
+                resetControlsHideTimer()
+                log("▶️ AVQueuePlayer auto-advancing (all): index \(currentIndex)")
             }
 
         case .off:
             // Auto play next if enabled and there are more videos
             if autoPlayNext, let playlist = playlist, currentIndex + 1 < playlist.count {
-                let nextIndex = currentIndex + 1
-                log("▶️ Playing next (off): index \(nextIndex)")
-                playNext(url: playlist[nextIndex], index: nextIndex)
+                // Let AVQueuePlayer auto-advance (actionAtItemEnd = .advance)
+                // Just update currentIndex for tracking
+                currentIndex += 1
+
+                updateNavigationButtons()
+                resetControlsHideTimer()
+                log("▶️ AVQueuePlayer will auto-advance to index \(currentIndex)")
             } else {
-                log("⏹️ No more videos to play")
+                log("⏹️ No more videos to play (queue exhausted)")
             }
         }
     }
 
-    private func playNext(url: URL, index: Int) {
-        // Update current index
-        self.currentIndex = index
+    private func rebuildQueueAndPlay() {
+        guard let playlist = playlist else { return }
 
-        // Play the file (applies current playback rate)
-        playFile(at: url)
+        // Remove old observer
+        if let observer = timeObserver {
+            avQueuePlayer?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+
+        // Remove old player layer
+        avPlayerLayer?.removeFromSuperlayer()
+        avPlayerLayer = nil
+
+        // Stop current player
+        avQueuePlayer?.pause()
+        avQueuePlayer = nil
+
+        // Build queue from beginning
+        var items: [AVPlayerItem] = []
+        for i in currentIndex..<playlist.count {
+            items.append(AVPlayerItem(url: playlist[i]))
+        }
+
+        let player = AVQueuePlayer(items: items)
+        player.actionAtItemEnd = .advance
+        avQueuePlayer = player
+
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.frame = videoView.bounds
+        playerLayer.videoGravity = Settings.shared.defaultAspectRatio.videoGravity
+        videoView.layer.addSublayer(playerLayer)
+        avPlayerLayer = playerLayer
+
+        // Setup time observer
+        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
+            self?.updateProgress()
+        }
+
+        // Observe end
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerDidFinishPlaying),
+            name: .AVPlayerItemDidPlayToEndTime,
+            object: nil
+        )
+
+        activateAudioSession()
+        player.play()
         updateNavigationButtons()
-        log("▶️ Playing next: \(url.lastPathComponent)")
+        updateNowPlayingInfo()
+        log("🔄 Queue rebuilt from index \(currentIndex)")
     }
 
     private func activateAudioSession() {
@@ -1199,7 +1278,7 @@ final class PlayerViewController: UIViewController {
 
         // Play command
         commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.avPlayer?.play()
+            self?.avQueuePlayer?.play()
             self?.isPaused = false
             self?.setPlayButtonIcon(isPlaying: true)
             self?.updateCenterButtons()
@@ -1209,7 +1288,7 @@ final class PlayerViewController: UIViewController {
 
         // Pause command
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.avPlayer?.pause()
+            self?.avQueuePlayer?.pause()
             self?.isPaused = true
             self?.setPlayButtonIcon(isPlaying: false)
             self?.updateCenterButtons()
@@ -1222,7 +1301,7 @@ final class PlayerViewController: UIViewController {
     }
 
     private func updateNowPlayingInfo() {
-        guard let player = avPlayer, let currentItem = player.currentItem else { return }
+        guard let player = avQueuePlayer, let currentItem = player.currentItem else { return }
 
         // Get current URL from player item
         let currentUrl: URL
@@ -1334,7 +1413,7 @@ final class PlayerViewController: UIViewController {
             isAdjustingBrightness = !isSeeking && location.x < view.bounds.width / 2
             if isSeeking {
                 // Get current playback position
-                if let player = avPlayer {
+                if let player = avQueuePlayer {
                     seekStartSeconds = player.currentTime().seconds
                 } else {
                     seekStartSeconds = 0
@@ -1351,7 +1430,7 @@ final class PlayerViewController: UIViewController {
                 let newTime = seekStartSeconds + seekDelta
 
                 // Clamp to valid range
-                let duration = avPlayer?.currentItem?.duration.seconds ?? 0
+                let duration = avQueuePlayer?.currentItem?.duration.seconds ?? 0
                 let clampedTime = max(0, min(duration, newTime))
 
                 showSeekIndicator(seconds: clampedTime)
@@ -1359,7 +1438,7 @@ final class PlayerViewController: UIViewController {
                 // Seek to position (throttled)
                 let time = CMTime(seconds: clampedTime, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
                 let tolerance = CMTime(seconds: 1, preferredTimescale: 600)
-                avPlayer?.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
+                avQueuePlayer?.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
             } else {
                 // Vertical swipe for brightness/volume
                 let deltaY = initialPanY - location.y
@@ -1414,7 +1493,7 @@ final class PlayerViewController: UIViewController {
         label.textColor = .white
         label.font = .monospacedDigitSystemFont(ofSize: 18, weight: .medium)
 
-        let duration = avPlayer?.currentItem?.duration.seconds ?? 0
+        let duration = avQueuePlayer?.currentItem?.duration.seconds ?? 0
         let currentStr = formatTime(seconds)
         let durationStr = formatTime(duration)
         label.text = "\(currentStr) / \(durationStr)"
@@ -1432,6 +1511,12 @@ final class PlayerViewController: UIViewController {
         ])
 
         seekIndicatorView = container
+
+        // Auto-hide after 1 second
+        seekIndicatorTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            self?.seekIndicatorView?.removeFromSuperview()
+            self?.seekIndicatorView = nil
+        }
     }
 
     private func formatTime(_ seconds: TimeInterval) -> String {
@@ -1523,11 +1608,11 @@ final class PlayerViewController: UIViewController {
 
     private func cleanupAndDismiss() {
         if let observer = timeObserver {
-            avPlayer?.removeTimeObserver(observer)
+            avQueuePlayer?.removeTimeObserver(observer)
             timeObserver = nil
         }
-        avPlayer?.pause()
-        avPlayer = nil
+        avQueuePlayer?.pause()
+        avQueuePlayer = nil
         avPlayerLayer?.removeFromSuperlayer()
         avPlayerLayer = nil
         pipController = nil
@@ -1547,7 +1632,7 @@ final class PlayerViewController: UIViewController {
         resetControlsHideTimer()
 
         // Handle AVPlayer
-        if let player = avPlayer {
+        if let player = avQueuePlayer {
             if player.timeControlStatus == .playing {
                 player.pause()
                 isPaused = true
@@ -1590,7 +1675,7 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func progressChanged() {
-        guard let player = avPlayer else { return }
+        guard let player = avQueuePlayer else { return }
 
         let duration = player.currentItem?.duration.seconds ?? 0
         guard duration > 0 else { return }
@@ -1601,10 +1686,13 @@ final class PlayerViewController: UIViewController {
 
         // Show time indicator
         showSeekIndicator(seconds: targetTime)
+
+        // Reset controls hide timer
+        resetControlsHideTimer()
     }
 
     private func updateProgress() {
-        guard let player = avPlayer else { return }
+        guard let player = avQueuePlayer else { return }
 
         let currentTime = player.currentTime().seconds
         let duration = player.currentItem?.duration.seconds ?? 0
@@ -1624,7 +1712,7 @@ final class PlayerViewController: UIViewController {
 
     private func updatePlayButton() {
         let isPlaying: Bool
-        if let player = avPlayer {
+        if let player = avQueuePlayer {
             isPlaying = player.timeControlStatus == .playing
         } else if playerEngine?.state == .playing {
             isPlaying = true
@@ -1681,7 +1769,7 @@ extension PlayerViewController: AVPictureInPictureControllerDelegate {
         // Show controls when PiP stops
         showControls()
         // Update button state based on current playback status
-        if let player = avPlayer {
+        if let player = avQueuePlayer {
             isPaused = (player.timeControlStatus != .playing)
             setPlayButtonIcon(isPlaying: !isPaused)
             updateCenterButtons()
