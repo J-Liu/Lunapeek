@@ -19,7 +19,32 @@ final class MainTabBarController: UITabBarController {
     }
 
     @objc private func languageDidChange() {
-        setupTabs()
+        // Update tab bar items without recreating view controllers
+        if let vcs = viewControllers {
+            for (index, vc) in vcs.enumerated() {
+                let navVC = vc as? UINavigationController
+                let rootVC = navVC?.viewControllers.first
+
+                switch index {
+                case 0:
+                    vc.tabBarItem?.title = NSLocalizedString("Video", comment: "")
+                    (rootVC as? MediaLibraryViewController)?.languageDidChange()
+                case 1:
+                    vc.tabBarItem?.title = NSLocalizedString("Audio", comment: "")
+                    (rootVC as? MediaLibraryViewController)?.languageDidChange()
+                case 2:
+                    vc.tabBarItem?.title = NSLocalizedString("Playlist", comment: "")
+                    (rootVC as? PlaylistViewController)?.languageDidChange()
+                case 3:
+                    vc.tabBarItem?.title = NSLocalizedString("Network", comment: "")
+                    (rootVC as? NetworkViewController)?.languageDidChange()
+                case 4:
+                    vc.tabBarItem?.title = NSLocalizedString("Settings", comment: "")
+                    (rootVC as? SettingsViewController)?.languageDidChange()
+                default: break
+                }
+            }
+        }
     }
 
     private func setupTabs() {

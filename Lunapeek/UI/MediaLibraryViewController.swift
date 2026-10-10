@@ -82,7 +82,7 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
         )
     }
 
-    @objc private func languageDidChange() {
+    @objc func languageDidChange() {
         title = mediaType == .video ? NSLocalizedString("Video", comment: "") : NSLocalizedString("Audio", comment: "")
         selectButton.title = isSelecting ? NSLocalizedString("Cancel", comment: "") : NSLocalizedString("Select", comment: "")
         collectionView.reloadData()

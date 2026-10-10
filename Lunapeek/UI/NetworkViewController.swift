@@ -42,7 +42,7 @@ final class NetworkViewController: UIViewController {
         )
     }
 
-    @objc private func languageDidChange() {
+    @objc func languageDidChange() {
         title = NSLocalizedString("Network", comment: "")
         tableView.reloadData()
     }

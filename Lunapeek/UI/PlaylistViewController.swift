@@ -114,7 +114,7 @@ final class PlaylistViewController: UIViewController {
         )
     }
 
-    @objc private func languageDidChange() {
+    @objc func languageDidChange() {
         title = NSLocalizedString("Playlist", comment: "")
         tableView.reloadData()
     }
