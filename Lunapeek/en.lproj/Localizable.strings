@@ -79,3 +79,62 @@
 "What happens when you leave during video playback" = "What happens when you leave during video playback";
 "Clear" = "Clear";
 "This will remove all saved servers. Are you sure?" = "This will remove all saved servers. Are you sure?";
+
+/* Media Library */
+"New Playlist" = "New Playlist";
+"Create" = "Create";
+"Favorites" = "Favorites";
+"Recently Played" = "Recently Played";
+"Sort By" = "Sort By";
+"Name (A-Z)" = "Name (A-Z)";
+"Name (Z-A)" = "Name (Z-A)";
+"Date (Newest)" = "Date (Newest)";
+"Date (Oldest)" = "Date (Oldest)";
+"Size (Large-Small)" = "Size (Large-Small)";
+"Size (Small-Large)" = "Size (Small-Large)";
+"Import from Files" = "Import from Files";
+"Import from Photos" = "Import from Photos";
+"Import Failed" = "Import Failed";
+"Enter playlist name" = "Enter playlist name";
+"Rename Playlist" = "Rename Playlist";
+"Delete Playlist" = "Delete Playlist";
+"Are you sure you want to delete this playlist?" = "Are you sure you want to delete this playlist?";
+"%d items" = "%d items";
+"1 item" = "1 item";
+"Empty" = "Empty";
+"Edit" = "Edit";
+"Done" = "Done";
+"Remove from Playlist" = "Remove from Playlist";
+"Add to Playlist" = "Add to Playlist";
+"Choose Playlist" = "Choose Playlist";
+"No Playlists" = "No Playlists";
+"Create a playlist first" = "Create a playlist first";
+"Added to %@" = "Added to %@";
+"Removed from playlist" = "Removed from playlist";
+"Cannot Delete" = "Cannot Delete";
+"Default playlists cannot be deleted" = "Default playlists cannot be deleted";
+"OK" = "OK";
+
+/* Network */
+"Saved Servers" = "Saved Servers";
+"Discovered" = "Discovered";
+"Scanning..." = "Scanning...";
+"No servers found" = "No servers found";
+"Authentication Required" = "Authentication Required";
+"Please enter username and password" = "Please enter username and password";
+"Save Password" = "Save Password";
+"Invalid address" = "Invalid address";
+"Please enter a valid server address" = "Please enter a valid server address";
+"Connection Failed" = "Connection Failed";
+"Disconnect" = "Disconnect";
+"Are you sure you want to disconnect?" = "Are you sure you want to disconnect?";
+"Remove Server" = "Remove Server";
+"Are you sure you want to remove this server?" = "Are you sure you want to remove this server?";
+"Browse" = "Browse";
+
+/* More */
+"Not Implemented" = "Not Implemented";
+"Rename feature coming soon" = "Rename feature coming soon";
+"Move feature coming soon" = "Move feature coming soon";
+"Copy feature coming soon" = "Copy feature coming soon";
+"Duplicate feature coming soon" = "Duplicate feature coming soon";

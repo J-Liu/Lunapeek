@@ -148,21 +148,21 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
 
         // Navigation bar buttons - Select + Download + Delete
         let selectButton = UIBarButtonItem(
-            title: "Select",
+            title: NSLocalizedString("Select", comment: ""),
             style: .plain,
             target: self,
             action: #selector(toggleSelect)
         )
 
         let downloadButton = UIBarButtonItem(
-            title: "Download",
+            title: NSLocalizedString("Download", comment: ""),
             style: .plain,
             target: self,
             action: #selector(downloadSelected)
         )
 
         let deleteButton = UIBarButtonItem(
-            title: "Delete",
+            title: NSLocalizedString("Delete", comment: ""),
             style: .plain,
             target: self,
             action: #selector(deleteSelected)
@@ -433,7 +433,7 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
         // Only show Select button when not selecting
         if !isSelecting {
             let selectButton = UIBarButtonItem(
-                title: "Select",
+                title: NSLocalizedString("Select", comment: ""),
                 style: .plain,
                 target: self,
                 action: #selector(toggleSelect)
@@ -442,7 +442,7 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
         } else {
             // Show Delete, Download, Cancel when selecting
             let deleteButton = UIBarButtonItem(
-                title: "Delete",
+                title: NSLocalizedString("Delete", comment: ""),
                 style: .plain,
                 target: self,
                 action: #selector(deleteSelected)
@@ -453,7 +453,7 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
             deleteButton.isEnabled = hasSelection
 
             let downloadButton = UIBarButtonItem(
-                title: "Download",
+                title: NSLocalizedString("Download", comment: ""),
                 style: .plain,
                 target: self,
                 action: #selector(downloadSelected)
@@ -461,7 +461,7 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
             downloadButton.isEnabled = hasSelection
 
             let cancelButton = UIBarButtonItem(
-                title: "Cancel",
+                title: NSLocalizedString("Cancel", comment: ""),
                 style: .plain,
                 target: self,
                 action: #selector(toggleSelect)
@@ -720,16 +720,16 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
         let files = selectedItems.map { items[$0.item] }
 
         let alert = UIAlertController(
-            title: "Delete \(files.count) item(s)?",
+            title: String(format: NSLocalizedString("Delete %d items?", comment: ""), files.count),
             message: files.map { $0.name }.joined(separator: "\n"),
             preferredStyle: .alert
         )
 
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { [weak self] _ in
             self?.performDelete(files: files)
         })
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
         present(alert, animated: true)
     }
 
@@ -1012,7 +1012,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
 
         // Cancel button
         let cancelButton = UIButton(type: .system)
-        cancelButton.setTitle("Cancel", for: .normal)
+        cancelButton.setTitle(NSLocalizedString("Cancel", comment: ""), for: .normal)
         cancelButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         cancelButton.backgroundColor = .secondarySystemBackground
         cancelButton.layer.cornerRadius = 12
@@ -1273,12 +1273,12 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
     }
 
     private func renameItem(_ item: RemoteFileItem) {
-        let alert = UIAlertController(title: "Rename", message: nil, preferredStyle: .alert)
+        let alert = UIAlertController(title: NSLocalizedString("Rename", comment: ""), message: nil, preferredStyle: .alert)
         alert.addTextField { textField in
             textField.text = item.name
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Rename", comment: ""), style: .default) { [weak self] _ in
             guard let newName = alert.textFields?.first?.text, !newName.isEmpty else { return }
             self?.performRename(item: item, newName: newName)
         })
@@ -1287,40 +1287,40 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
 
     private func performRename(item: RemoteFileItem, newName: String) {
         // TODO: Implement rename
-        let alert = UIAlertController(title: "Not Implemented", message: "Rename feature coming soon", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(title: NSLocalizedString("Not Implemented", comment: ""), message: NSLocalizedString("Rename feature coming soon", comment: ""), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
         present(alert, animated: true)
     }
 
     private func moveItem(_ item: RemoteFileItem) {
         // TODO: Implement move
-        let alert = UIAlertController(title: "Not Implemented", message: "Move feature coming soon", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(title: NSLocalizedString("Not Implemented", comment: ""), message: NSLocalizedString("Move feature coming soon", comment: ""), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
         present(alert, animated: true)
     }
 
     private func copyItem(_ item: RemoteFileItem) {
         // TODO: Implement copy
-        let alert = UIAlertController(title: "Not Implemented", message: "Copy feature coming soon", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(title: NSLocalizedString("Not Implemented", comment: ""), message: NSLocalizedString("Copy feature coming soon", comment: ""), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
         present(alert, animated: true)
     }
 
     private func duplicateItem(_ item: RemoteFileItem) {
         // TODO: Implement duplicate
-        let alert = UIAlertController(title: "Not Implemented", message: "Duplicate feature coming soon", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        let alert = UIAlertController(title: NSLocalizedString("Not Implemented", comment: ""), message: NSLocalizedString("Duplicate feature coming soon", comment: ""), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
         present(alert, animated: true)
     }
 
     private func confirmDeleteItem(_ item: RemoteFileItem, at indexPath: IndexPath) {
         let alert = UIAlertController(
-            title: "Delete \(item.isDirectory ? "Folder" : "File")?",
+            title: NSLocalizedString("Confirm Delete", comment: ""),
             message: item.name,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { [weak self] _ in
             self?.performDelete(files: [item])
         })
         present(alert, animated: true)

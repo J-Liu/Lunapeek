@@ -21,8 +21,19 @@ enum SortOption: String, CaseIterable {
     case nameDesc = "Name (Z-A)"
     case dateNewest = "Date (Newest)"
     case dateOldest = "Date (Oldest)"
-    case sizeLargest = "Size (Largest)"
-    case sizeSmallest = "Size (Smallest)"
+    case sizeLargest = "Size (Large-Small)"
+    case sizeSmallest = "Size (Small-Large)"
+
+    var displayName: String {
+        switch self {
+        case .nameAsc: return NSLocalizedString("Name (A-Z)", comment: "")
+        case .nameDesc: return NSLocalizedString("Name (Z-A)", comment: "")
+        case .dateNewest: return NSLocalizedString("Date (Newest)", comment: "")
+        case .dateOldest: return NSLocalizedString("Date (Oldest)", comment: "")
+        case .sizeLargest: return NSLocalizedString("Size (Large-Small)", comment: "")
+        case .sizeSmallest: return NSLocalizedString("Size (Small-Large)", comment: "")
+        }
+    }
 }
 
 final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDelegate {
@@ -96,7 +107,7 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
     }
 
     private func setupUI() {
-        title = mediaType == .video ? "Video" : "Audio"
+        title = mediaType == .video ? NSLocalizedString("Video", comment: "") : NSLocalizedString("Audio", comment: "")
         view.backgroundColor = .systemBackground
 
         // Display mode toggle button
@@ -117,7 +128,7 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
 
         // Select button
         selectButton = UIBarButtonItem(
-            title: "Select",
+            title: NSLocalizedString("Select", comment: ""),
             style: .plain,
             target: self,
             action: #selector(toggleSelect)
@@ -204,17 +215,17 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
     }
 
     @objc private func showSortOptions() {
-        let alert = UIAlertController(title: "Sort By", message: nil, preferredStyle: .actionSheet)
+        let alert = UIAlertController(title: NSLocalizedString("Sort By", comment: ""), message: nil, preferredStyle: .actionSheet)
 
         for option in SortOption.allCases {
             let isSelected = sortOption == option
-            alert.addAction(UIAlertAction(title: option.rawValue + (isSelected ? " ✓" : ""), style: .default) { [weak self] _ in
+            alert.addAction(UIAlertAction(title: option.displayName + (isSelected ? " ✓" : ""), style: .default) { [weak self] _ in
                 self?.sortOption = option
                 self?.applySort()
             })
         }
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
 
         if let popover = alert.popoverPresentationController {
             popover.barButtonItem = sortButton
@@ -225,7 +236,7 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
     @objc private func toggleSelect() {
         isSelecting.toggle()
         selectedItems.removeAll()
-        selectButton.title = isSelecting ? "Cancel" : "Select"
+        selectButton.title = isSelecting ? NSLocalizedString("Cancel", comment: "") : NSLocalizedString("Select", comment: "")
         collectionView.reloadData()
 
         if !isSelecting {
@@ -236,7 +247,7 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
             ]
         } else {
             let deleteButton = UIBarButtonItem(
-                title: "Delete",
+                title: NSLocalizedString("Delete", comment: ""),
                 style: .plain,
                 target: self,
                 action: #selector(deleteSelected)
@@ -329,15 +340,15 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
     @objc private func addMediaTapped() {
         let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
 
-        alert.addAction(UIAlertAction(title: "Import from Files", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Import from Files", comment: ""), style: .default) { [weak self] _ in
             self?.showFilePicker()
         })
 
-        alert.addAction(UIAlertAction(title: "Import from Photos", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Import from Photos", comment: ""), style: .default) { [weak self] _ in
             self?.showPhotoPicker()
         })
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
 
         if let popover = alert.popoverPresentationController {
             popover.barButtonItem = navigationItem.rightBarButtonItem
@@ -603,7 +614,7 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
 
         // Cancel button
         let cancelButton = UIButton(type: .system)
-        cancelButton.setTitle("Cancel", for: .normal)
+        cancelButton.setTitle(NSLocalizedString("Cancel", comment: ""), for: .normal)
         cancelButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         cancelButton.backgroundColor = .secondarySystemBackground
         cancelButton.layer.cornerRadius = 12

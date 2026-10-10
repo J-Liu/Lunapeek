@@ -44,8 +44,8 @@ class PlaylistManager {
         else {
             // Create default playlists
             playlists = [
-                PlaylistData(name: "Favorites"),
-                PlaylistData(name: "Recently Played")
+                PlaylistData(name: NSLocalizedString("Favorites", comment: "")),
+                PlaylistData(name: NSLocalizedString("Recently Played", comment: ""))
             ]
             return
         }
@@ -140,18 +140,18 @@ final class PlaylistViewController: UIViewController {
     }
 
     @objc private func createPlaylist() {
-        let alert = UIAlertController(title: "New Playlist", message: nil, preferredStyle: .alert)
+        let alert = UIAlertController(title: NSLocalizedString("New Playlist", comment: ""), message: nil, preferredStyle: .alert)
         alert.addTextField { textField in
-            textField.placeholder = "Playlist Name"
+            textField.placeholder = NSLocalizedString("Enter playlist name", comment: "")
         }
 
-        alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Create", comment: ""), style: .default) { [weak self] _ in
             guard let name = alert.textFields?.first?.text, !name.isEmpty else { return }
             PlaylistManager.shared.createPlaylist(name: name)
             self?.tableView.reloadData()
         })
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
         present(alert, animated: true)
     }
 }
@@ -168,8 +168,9 @@ extension PlaylistViewController: UITableViewDataSource, UITableViewDelegate {
 
         var config = cell.defaultContentConfiguration()
         config.text = playlist.name
-        config.secondaryText = "\(playlist.items.count) items"
-        config.image = UIImage(systemName: playlist.name == "Favorites" ? "heart.fill" : "music.note.list")
+        let itemCount = playlist.items.count
+        config.secondaryText = itemCount == 1 ? NSLocalizedString("1 item", comment: "") : String(format: NSLocalizedString("%d items", comment: ""), itemCount)
+        config.image = UIImage(systemName: playlist.name == NSLocalizedString("Favorites", comment: "") ? "heart.fill" : "music.note.list")
         cell.contentConfiguration = config
         cell.accessoryType = .disclosureIndicator
         return cell
@@ -190,13 +191,13 @@ extension PlaylistViewController: UITableViewDataSource, UITableViewDelegate {
             let playlist = playlists[indexPath.row]
 
             // Don't allow deleting default playlists
-            if playlist.name == "Favorites" || playlist.name == "Recently Played" {
+            if playlist.name == NSLocalizedString("Favorites", comment: "") || playlist.name == NSLocalizedString("Recently Played", comment: "") {
                 let alert = UIAlertController(
-                    title: "Cannot Delete",
-                    message: "Default playlists cannot be deleted",
+                    title: NSLocalizedString("Cannot Delete", comment: ""),
+                    message: NSLocalizedString("Default playlists cannot be deleted", comment: ""),
                     preferredStyle: .alert
                 )
-                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
                 present(alert, animated: true)
                 return
             }
@@ -211,14 +212,14 @@ extension PlaylistViewController: UITableViewDataSource, UITableViewDelegate {
         let playlist = playlists[indexPath.row]
 
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            let renameAction = UIAction(title: "Rename", image: UIImage(systemName: "pencil")) { [weak self] _ in
+            let renameAction = UIAction(title: NSLocalizedString("Rename", comment: ""), image: UIImage(systemName: "pencil")) { [weak self] _ in
                 self?.renamePlaylist(at: indexPath.row, currentName: playlist.name)
             }
 
             var children: [UIMenuElement] = [renameAction]
 
-            if playlist.name != "Favorites" && playlist.name != "Recently Played" {
-                let deleteAction = UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
+            if playlist.name != NSLocalizedString("Favorites", comment: "") && playlist.name != NSLocalizedString("Recently Played", comment: "") {
+                let deleteAction = UIAction(title: NSLocalizedString("Delete", comment: ""), image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
                     PlaylistManager.shared.deletePlaylist(at: indexPath.row)
                     self?.tableView.reloadData()
                 }
@@ -230,18 +231,18 @@ extension PlaylistViewController: UITableViewDataSource, UITableViewDelegate {
     }
 
     private func renamePlaylist(at index: Int, currentName: String) {
-        let alert = UIAlertController(title: "Rename Playlist", message: nil, preferredStyle: .alert)
+        let alert = UIAlertController(title: NSLocalizedString("Rename Playlist", comment: ""), message: nil, preferredStyle: .alert)
         alert.addTextField { textField in
             textField.text = currentName
         }
 
-        alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Rename", comment: ""), style: .default) { [weak self] _ in
             guard let name = alert.textFields?.first?.text, !name.isEmpty else { return }
             PlaylistManager.shared.renamePlaylist(at: index, to: name)
             self?.tableView.reloadData()
         })
 
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
         present(alert, animated: true)
     }
 }

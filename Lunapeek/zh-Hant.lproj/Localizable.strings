@@ -79,3 +79,61 @@
 "What happens when you leave during video playback" = "離開影片播放時會發生什麼事";
 "Clear" = "清除";
 "This will remove all saved servers. Are you sure?" = "這將刪除所有儲存的伺服器。確定嗎？";
+
+/* Media Library */
+"New Playlist" = "新增播放清單";
+"Create" = "建立";
+"Favorites" = "收藏";
+"Recently Played" = "最近播放";
+"Sort By" = "排序方式";
+"Name (A-Z)" = "名稱 (A-Z)";
+"Name (Z-A)" = "名稱 (Z-A)";
+"Date (Newest)" = "日期 (最新)";
+"Date (Oldest)" = "日期 (最早)";
+"Size (Large-Small)" = "大小 (大-小)";
+"Size (Small-Large)" = "大小 (小-大)";
+"Import from Files" = "從檔案匯入";
+"Import from Photos" = "從相簿匯入";
+"Import Failed" = "匯入失敗";
+"Enter playlist name" = "輸入播放清單名稱";
+"Rename Playlist" = "重新命名播放清單";
+"Delete Playlist" = "刪除播放清單";
+"Are you sure you want to delete this playlist?" = "確定要刪除此播放清單嗎？";
+"%d items" = "%d 個項目";
+"1 item" = "1 個項目";
+"Empty" = "空";
+"Edit" = "編輯";
+"Done" = "完成";
+"Remove from Playlist" = "從播放清單移除";
+"Add to Playlist" = "加入播放清單";
+"Choose Playlist" = "選擇播放清單";
+"No Playlists" = "沒有播放清單";
+"Create a playlist first" = "先建立一個播放清單";
+"Added to %@" = "已加入 %@";
+"Removed from playlist" = "已從播放清單移除";
+"Cannot Delete" = "無法刪除";
+"Default playlists cannot be deleted" = "預設播放清單無法刪除";
+"OK" = "確定";
+
+/* Network */
+"Saved Servers" = "已儲存的伺服器";
+"Discovered" = "探索到的裝置";
+"Scanning..." = "正在掃描...";
+"No servers found" = "找不到伺服器";
+"Authentication Required" = "需要驗證";
+"Please enter username and password" = "請輸入使用者名稱和密碼";
+"Save Password" = "儲存密碼";
+"Invalid address" = "無效的位址";
+"Please enter a valid server address" = "請輸入有效的伺服器位址";
+"Connection Failed" = "連線失敗";
+"Are you sure you want to disconnect?" = "確定要中斷連線嗎？";
+"Remove Server" = "移除伺服器";
+"Are you sure you want to remove this server?" = "確定要移除此伺服器嗎？";
+"Browse" = "瀏覽";
+
+/* More */
+"Not Implemented" = "未實作";
+"Rename feature coming soon" = "重新命名功能即將推出";
+"Move feature coming soon" = "移動功能即將推出";
+"Copy feature coming soon" = "複製功能即將推出";
+"Duplicate feature coming soon" = "複製功能即將推出";

@@ -577,9 +577,9 @@ extension NetworkViewController: UITableViewDataSource, UITableViewDelegate {
         let hasSaved = !savedServers.isEmpty
         let hasDiscovered = !discoveredServers.isEmpty || isScanning
 
-        if hasSaved && section == 0 { return "Saved Servers" }
-        if hasSaved && hasDiscovered && section == 1 { return "Discovered" }
-        if !hasSaved && hasDiscovered && section == 0 { return "Discovered" }
+        if hasSaved && section == 0 { return NSLocalizedString("Saved Servers", comment: "") }
+        if hasSaved && hasDiscovered && section == 1 { return NSLocalizedString("Discovered", comment: "") }
+        if !hasSaved && hasDiscovered && section == 0 { return NSLocalizedString("Discovered", comment: "") }
         return nil
     }
 
@@ -792,7 +792,7 @@ final class ScanningCell: UITableViewCell {
         spinner.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(spinner)
 
-        label.text = "Scanning for servers..."
+        label.text = NSLocalizedString("Scanning...", comment: "")
         label.textColor = .secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(label)
