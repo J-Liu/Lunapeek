@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Jia Liu
 
-# Build both targets first
+# Build target first
 ./build.sh
 
 # Find the built app
