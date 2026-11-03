@@ -136,18 +136,16 @@ final class AboutViewController: UIViewController {
         textView.translatesAutoresizingMaskIntoConstraints = false
         vc.view.addSubview(textView)
 
-        let notice = """
-        Lunapeek - A native iOS video player for SMB/SFTP network file browsing
-        Copyright 2026 Jia Liu
+        // Load NOTICE file from bundle
+        let noticeText: String
+        if let path = Bundle.main.path(forResource: "NOTICE", ofType: nil),
+           let content = try? String(contentsOfFile: path, encoding: .utf8) {
+            noticeText = content
+        } else {
+            noticeText = "NOTICE file not found"
+        }
 
-        This product includes software developed by Jia Liu.
-
-        The original Lunapeek project and its contributors must be credited
-        in any redistribution or derivative work. This attribution notice must
-        be retained in all copies or substantial portions of the software.
-        """
-
-        textView.text = notice
+        textView.text = noticeText
 
         NSLayoutConstraint.activate([
             textView.topAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.topAnchor),
