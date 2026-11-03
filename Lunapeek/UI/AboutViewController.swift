@@ -9,7 +9,16 @@ final class AboutViewController: UIViewController {
 
     private let iconImageView: UIImageView = {
         let imageView = UIImageView()
-        imageView.image = UIImage(named: "AppIcon")
+        // Load icon from AppStore-1024.png in bundle root
+        if let image = UIImage(named: "AppStore-1024") {
+            imageView.image = image
+        } else if let path = Bundle.main.path(forResource: "AppStore-1024", ofType: "png"),
+                  let image = UIImage(contentsOfFile: path) {
+            imageView.image = image
+        } else {
+            imageView.image = UIImage(systemName: "play.circle.fill")
+            imageView.tintColor = .systemBlue
+        }
         imageView.contentMode = .scaleAspectFit
         imageView.layer.cornerRadius = 22
         imageView.clipsToBounds = true

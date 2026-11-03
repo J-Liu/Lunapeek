@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0%" stop-color="#3A1A1E"/>
+      <stop offset="100%" stop-color="#1A0B0D"/>
+    </radialGradient>
+    <linearGradient id="candy" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF5A5F"/>
+      <stop offset="50%" stop-color="#FF8A3D"/>
+      <stop offset="100%" stop-color="#FFC93C"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- Foreground -->
+  <path d="M 512 170
+           A 342 342 0 1 1 290 790"
+        fill="none" stroke="#FFF3E6" stroke-width="56"
+        stroke-linecap="round"/>
+
+  <path d="M 300 545
+           L 380 545
+           L 415 545
+           L 470 340
+           L 512 670
+           L 555 400
+           L 604 545
+           L 724 545"
+        fill="none" stroke="url(#candy)" stroke-width="52"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

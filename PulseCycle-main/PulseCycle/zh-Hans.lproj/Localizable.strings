@@ -1,0 +1,97 @@
+/* Main UI */
+"Work" = "运动";
+"Rest" = "休息";
+"BPM" = "次/分";
+"Profiles" = "训练方案";
+"Settings" = "设置";
+
+/* Connection Status */
+"Not connected" = "未连接";
+"Scanning…" = "正在扫描…";
+"Connecting…" = "正在连接…";
+"Connecting" = "正在连接";
+"Connected" = "已连接";
+"Disconnected" = "已断开";
+"Error" = "错误";
+"Devices" = "设备";
+"HRM Devices" = "心率设备";
+"Default" = "默认";
+"Set as Default" = "设为默认";
+"Remove" = "移除";
+"Scanning" = "扫描中";
+"Looking for heart rate devices..." = "正在搜索心率设备...";
+"Connect" = "连接";
+"Disconnect" = "断开";
+"Scan Timeout" = "扫描超时";
+"No heart rate devices found. Please make sure your device is powered on and nearby." = "未找到心率设备。请确保设备已开启且在附近。";
+
+/* Timer Phases */
+"Warm Up" = "热身";
+"Cool Down" = "放松";
+"Finished" = "完成";
+"Round %d / %d" = "第 %d / %d 轮";
+
+/* Buttons */
+"Go" = "开始";
+"Pause" = "暂停";
+"Resume" = "继续";
+"Reset" = "重置";
+
+/* Settings - Profile */
+"Profile Name" = "方案名称";
+"Rounds" = "轮数";
+"Work" = "运动";
+"Rest" = "休息";
+"Warm-up" = "热身";
+"Cool-down" = "放松";
+"Prepare time" = "准备时间";
+"Disabled" = "已禁用";
+
+/* Settings - Sound */
+"Sound" = "声音";
+"Prepare counting sound" = "准备倒计时声音";
+"Start sound" = "开始声音";
+"Ending notify sound" = "结束提醒声音";
+"End sound" = "结束声音";
+
+/* Settings - Color */
+"Color" = "颜色";
+"Heart Rate" = "心率";
+"Prepare" = "准备";
+"Warm Up" = "热身";
+"Cool Down" = "放松";
+"Reset to Default" = "恢复默认";
+
+/* Settings - Misc */
+"Misc" = "杂项";
+"Language" = "语言";
+"Voice output" = "语音输出";
+
+/* Language Options */
+"System" = "跟随系统";
+"English" = "English";
+"简体中文" = "简体中文";
+"繁體中文" = "繁體中文";
+
+/* Theme Options */
+"Theme" = "主题";
+"Light" = "浅色";
+"Dark" = "深色";
+
+/* Profile List */
+"rounds" = "轮";
+"work" = "运动";
+"rest" = "休息";
+
+/* Common */
+"Cancel" = "取消";
+"Done" = "完成";
+"Profile" = "方案";
+"min" = "分";
+"sec" = "秒";
+"Enter name" = "输入名称";
+"New Profile" = "新方案";
+"Create" = "创建";
+"About" = "关于";
+"Version" = "版本";
+"Copyright 2026 Jia Liu. All rights reserved." = "版权所有 2026 Jia Liu。保留所有权利。";

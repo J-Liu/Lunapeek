@@ -1,0 +1,97 @@
+/* Main UI */
+"Work" = "Work";
+"Rest" = "Rest";
+"BPM" = "BPM";
+"Profiles" = "Profiles";
+"Settings" = "Settings";
+
+/* Connection Status */
+"Not connected" = "Not connected";
+"Scanning…" = "Scanning…";
+"Connecting…" = "Connecting…";
+"Connecting" = "Connecting";
+"Connected" = "Connected";
+"Disconnected" = "Disconnected";
+"Error" = "Error";
+"Devices" = "Devices";
+"HRM Devices" = "HRM Devices";
+"Default" = "Default";
+"Set as Default" = "Set as Default";
+"Remove" = "Remove";
+"Scanning" = "Scanning";
+"Looking for heart rate devices..." = "Looking for heart rate devices...";
+"Connect" = "Connect";
+"Disconnect" = "Disconnect";
+"Scan Timeout" = "Scan Timeout";
+"No heart rate devices found. Please make sure your device is powered on and nearby." = "No heart rate devices found. Please make sure your device is powered on and nearby.";
+
+/* Timer Phases */
+"Warm Up" = "Warm Up";
+"Cool Down" = "Cool Down";
+"Finished" = "Finished";
+"Round %d / %d" = "Round %d / %d";
+
+/* Buttons */
+"Go" = "Go";
+"Pause" = "Pause";
+"Resume" = "Resume";
+"Reset" = "Reset";
+
+/* Settings - Profile */
+"Profile Name" = "Profile Name";
+"Rounds" = "Rounds";
+"Work" = "Work";
+"Rest" = "Rest";
+"Warm-up" = "Warm-up";
+"Cool-down" = "Cool-down";
+"Prepare time" = "Prepare time";
+"Disabled" = "Disabled";
+
+/* Settings - Sound */
+"Sound" = "Sound";
+"Prepare counting sound" = "Prepare counting sound";
+"Start sound" = "Start sound";
+"Ending notify sound" = "Ending notify sound";
+"End sound" = "End sound";
+
+/* Settings - Color */
+"Color" = "Color";
+"Heart Rate" = "Heart Rate";
+"Prepare" = "Prepare";
+"Warm Up" = "Warm Up";
+"Cool Down" = "Cool Down";
+"Reset to Default" = "Reset to Default";
+
+/* Settings - Misc */
+"Misc" = "Misc";
+"Language" = "Language";
+"Voice output" = "Voice output";
+
+/* Language Options */
+"System" = "System";
+"English" = "English";
+"简体中文" = "简体中文";
+"繁體中文" = "繁體中文";
+
+/* Theme Options */
+"Theme" = "Theme";
+"Light" = "Light";
+"Dark" = "Dark";
+
+/* Profile List */
+"rounds" = "rounds";
+"work" = "work";
+"rest" = "rest";
+
+/* Common */
+"Cancel" = "Cancel";
+"Done" = "Done";
+"Profile" = "Profile";
+"min" = "min";
+"sec" = "sec";
+"Enter name" = "Enter name";
+"New Profile" = "New Profile";
+"Create" = "Create";
+"About" = "About";
+"Version" = "Version";
+"Copyright 2026 Jia Liu. All rights reserved." = "Copyright 2026 Jia Liu. All rights reserved.";
