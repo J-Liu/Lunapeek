@@ -58,14 +58,14 @@ final class AboutViewController: UIViewController {
         label.textColor = .secondaryLabel
         label.textAlignment = .center
         label.numberOfLines = 0
-        label.text = NSLocalizedString("Copyright 2026 Jia Liu. All rights reserved.", comment: "")
+        label.text = L("Copyright 2026 Jia Liu. All rights reserved.")
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     private let noticeButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle(NSLocalizedString("Notice", comment: ""), for: .normal)
+        button.setTitle(L("Notice"), for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 14, weight: .regular)
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -77,7 +77,7 @@ final class AboutViewController: UIViewController {
     }
 
     private func setupView() {
-        title = NSLocalizedString("About", comment: "")
+        title = L("About")
         view.backgroundColor = .systemGroupedBackground
 
         view.addSubview(iconImageView)
@@ -89,7 +89,7 @@ final class AboutViewController: UIViewController {
 
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
-        versionLabel.text = "\(NSLocalizedString("Version", comment: "")) \(version) (\(build))"
+        versionLabel.text = "\(L("Version")) \(version) (\(build))"
 
         linkButton.addTarget(self, action: #selector(openLink), for: .touchUpInside)
         noticeButton.addTarget(self, action: #selector(showNotice), for: .touchUpInside)
@@ -126,7 +126,7 @@ final class AboutViewController: UIViewController {
 
     @objc private func showNotice() {
         let vc = UIViewController()
-        vc.title = NSLocalizedString("Notice", comment: "")
+        vc.title = L("Notice")
         vc.view.backgroundColor = .systemBackground
 
         let textView = UITextView()
