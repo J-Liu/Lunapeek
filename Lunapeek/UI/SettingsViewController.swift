@@ -50,7 +50,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 2: return 4 // File Browser
         case 3: return 1 // Video
         case 4: return 1 // Audio
-        case 5: return 1 // Playback
+        case 5: return 2 // Playback
         case 6: return 2 // About
         default: return 0
         }
@@ -127,10 +127,19 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             cell.accessoryView = toggle
 
         case 5: // Playback
-            cell.textLabel?.text = NSLocalizedString("Playback", comment: "")
-            cell.detailTextLabel?.text = Settings.shared.exitBehavior.displayName
-            cell.selectionStyle = .default
-            cell.accessoryType = .disclosureIndicator
+            switch indexPath.row {
+            case 0:
+                cell.textLabel?.text = NSLocalizedString("Repeat Mode", comment: "")
+                cell.detailTextLabel?.text = Settings.shared.repeatMode.displayName
+                cell.selectionStyle = .default
+                cell.accessoryType = .disclosureIndicator
+            case 1:
+                cell.textLabel?.text = NSLocalizedString("Exit Behavior", comment: "")
+                cell.detailTextLabel?.text = Settings.shared.exitBehavior.displayName
+                cell.selectionStyle = .default
+                cell.accessoryType = .disclosureIndicator
+            default: break
+            }
 
         case 6: // About
             switch indexPath.row {
@@ -171,7 +180,11 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 4:
             break // Audio section - toggle only
         case 5:
-            showPlaybackOptions()
+            if indexPath.row == 0 {
+                showRepeatModePicker()
+            } else if indexPath.row == 1 {
+                showExitBehaviorPicker()
+            }
         case 6:
             if indexPath.row == 0 {
                 let aboutVC = AboutViewController()
@@ -246,27 +259,6 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             Settings.shared.exitBehavior = ExitBehavior.allCases[index]
             self.tableView.reloadData()
         }
-    }
-
-    private func showPlaybackOptions() {
-        let alert = UIAlertController(title: NSLocalizedString("Playback", comment: ""), message: nil, preferredStyle: .actionSheet)
-
-        alert.addAction(UIAlertAction(title: NSLocalizedString("Repeat Mode", comment: "") + ": " + Settings.shared.repeatMode.displayName, style: .default) { [weak self] _ in
-            self?.showRepeatModePicker()
-        })
-
-        alert.addAction(UIAlertAction(title: NSLocalizedString("Exit Behavior", comment: "") + ": " + Settings.shared.exitBehavior.displayName, style: .default) { [weak self] _ in
-            self?.showExitBehaviorPicker()
-        })
-
-        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
-
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = self.view
-            popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 0, height: 0)
-        }
-
-        present(alert, animated: true)
     }
 
     private func showAspectRatioPicker() {
