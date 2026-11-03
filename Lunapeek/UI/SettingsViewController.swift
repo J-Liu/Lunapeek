@@ -145,6 +145,8 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             switch indexPath.row {
             case 0:
                 cell.textLabel?.text = NSLocalizedString("About Lunapeek", comment: "")
+                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+                cell.detailTextLabel?.text = version
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
             case 1:
