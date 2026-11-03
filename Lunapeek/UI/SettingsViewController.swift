@@ -50,8 +50,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 2: return 4 // File Browser
         case 3: return 1 // Video
         case 4: return 1 // Audio
-        case 5: return 3 // Playback (repeat mode, auto play next, exit behavior)
-        case 6: return 2 // About
+        case 5: return 2 // About
         default: return 0
         }
     }
@@ -63,8 +62,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 2: return NSLocalizedString("File Browser", comment: "")
         case 3: return NSLocalizedString("Video", comment: "")
         case 4: return NSLocalizedString("Audio", comment: "")
-        case 5: return NSLocalizedString("Playback", comment: "")
-        case 6: return NSLocalizedString("About", comment: "")
+        case 5: return NSLocalizedString("About", comment: "")
         default: return nil
         }
     }
@@ -113,46 +111,25 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             default: break
             }
 
-        case 2: // Video
+        case 3: // Video
             cell.textLabel?.text = NSLocalizedString("Default Aspect Ratio", comment: "")
             cell.detailTextLabel?.text = Settings.shared.defaultAspectRatio.displayName
             cell.selectionStyle = .default
             cell.accessoryType = .disclosureIndicator
 
-        case 3: // Audio
+        case 4: // Audio
             cell.textLabel?.text = NSLocalizedString("Audio Background Play", comment: "")
             let toggle = UISwitch()
             toggle.isOn = Settings.shared.backgroundPlay
             toggle.addTarget(self, action: #selector(backgroundPlayChanged(_:)), for: .valueChanged)
             cell.accessoryView = toggle
 
-        case 4: // Playback
-            switch indexPath.row {
-            case 0:
-                cell.textLabel?.text = NSLocalizedString("Repeat Mode", comment: "")
-                cell.detailTextLabel?.text = Settings.shared.repeatMode.displayName
-                cell.selectionStyle = .default
-                cell.accessoryType = .disclosureIndicator
-            case 1:
-                cell.textLabel?.text = NSLocalizedString("Auto Play Next", comment: "")
-                let toggle = UISwitch()
-                toggle.isOn = Settings.shared.autoPlayNext
-                toggle.addTarget(self, action: #selector(autoPlayNextChanged(_:)), for: .valueChanged)
-                cell.accessoryView = toggle
-            case 2:
-                cell.textLabel?.text = NSLocalizedString("Exit Behavior", comment: "")
-                cell.detailTextLabel?.text = Settings.shared.exitBehavior.displayName
-                cell.selectionStyle = .default
-                cell.accessoryType = .disclosureIndicator
-            default: break
-            }
-
         case 5: // About
             switch indexPath.row {
             case 0:
-                cell.textLabel?.text = NSLocalizedString("Version", comment: "")
-                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-                cell.detailTextLabel?.text = version
+                cell.textLabel?.text = NSLocalizedString("About Lunapeek", comment: "")
+                cell.selectionStyle = .default
+                cell.accessoryType = .disclosureIndicator
             case 1:
                 cell.textLabel?.text = NSLocalizedString("License", comment: "")
                 cell.detailTextLabel?.text = "AGPL-3.0"
@@ -187,12 +164,9 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             break // Audio section - toggle only
         case 5:
             if indexPath.row == 0 {
-                showRepeatModePicker()
-            } else if indexPath.row == 2 {
-                showExitBehaviorPicker()
-            }
-        case 6:
-            if indexPath.row == 1 {
+                let aboutVC = AboutViewController()
+                navigationController?.pushViewController(aboutVC, animated: true)
+            } else if indexPath.row == 1 {
                 showLicense()
             }
         default: break
