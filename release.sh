@@ -10,7 +10,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}=== PulseCycle iOS Release Script ===${NC}\n"
+echo -e "${GREEN}=== Lunapeek iOS Release Script ===${NC}\n"
 
 # Check if we're on main branch
 CURRENT_BRANCH=$(git branch --show-current)
@@ -61,28 +61,28 @@ if [ "$LOCAL" != "$REMOTE" ]; then
 fi
 echo -e "${GREEN}✓ In sync with origin/main${NC}"
 
-# Get latest iOS tag
-LATEST_TAG=$(git tag -l 'ios/*' --sort=-version:refname | head -1)
+# Get latest tag
+LATEST_TAG=$(git tag -l 'v*' --sort=-version:refname | head -1)
 if [ -z "$LATEST_TAG" ]; then
-    LATEST_TAG="ios/0.1.0"
+    LATEST_TAG="v0.1.0"
 fi
-echo -e "\n${GREEN}Latest iOS tag: ${LATEST_TAG}${NC}"
+echo -e "\n${GREEN}Latest tag: ${LATEST_TAG}${NC}"
 
 # Parse version number
-VERSION=${LATEST_TAG#ios/}
+VERSION=${LATEST_TAG#v}
 MAJOR=$(echo $VERSION | cut -d. -f1)
 MINOR=$(echo $VERSION | cut -d. -f2)
 PATCH=$(echo $VERSION | cut -d. -f3)
 
 # Increment patch version
 NEW_PATCH=$((PATCH + 1))
-NEW_TAG="ios/${MAJOR}.${MINOR}.${NEW_PATCH}"
+NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
 NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
 
 echo -e "${GREEN}New tag: ${NEW_TAG}${NC}"
 
 # Get current version from xcodeproj
-PROJECT_FILE="PulseCycle.xcodeproj/project.pbxproj"
+PROJECT_FILE="Lunapeek.xcodeproj/project.pbxproj"
 if [ ! -f "$PROJECT_FILE" ]; then
     echo -e "${RED}Error: project.pbxproj not found${NC}"
     exit 1
@@ -138,4 +138,4 @@ echo -e "${GREEN}Pushing to origin...${NC}"
 git push origin main
 git push origin "$NEW_TAG"
 
-echo -e "\n${GREEN}=== iOS Release $NEW_TAG completed! ===${NC}"
+echo -e "\n${GREEN}=== Lunapeek Release $NEW_TAG completed! ===${NC}"
