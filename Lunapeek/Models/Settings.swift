@@ -5,6 +5,7 @@
 
 import Foundation
 import AVFoundation
+import UIKit
 
 final class Settings {
     static let shared = Settings()
@@ -21,6 +22,16 @@ final class Settings {
         static let repeatMode = "repeatMode"
         static let exitBehavior = "exitBehavior"
         static let language = "language"
+        static let theme = "theme"
+    }
+
+    // MARK: - Theme
+    var theme: AppTheme {
+        get { AppTheme(rawValue: defaults.string(forKey: Key.theme) ?? "system") ?? .system }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.theme)
+            applyTheme(newValue)
+        }
     }
 
     // MARK: - Language
@@ -137,6 +148,36 @@ enum ExitBehavior: String, CaseIterable {
         case .pip: return NSLocalizedString("Picture in Picture", comment: "")
         case .background: return NSLocalizedString("Background Play", comment: "")
         case .pause: return NSLocalizedString("Pause", comment: "")
+        }
+    }
+}
+
+enum AppTheme: String, CaseIterable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+
+    var displayName: String {
+        switch self {
+        case .system: return NSLocalizedString("System Default", comment: "")
+        case .light: return NSLocalizedString("Light", comment: "")
+        case .dark: return NSLocalizedString("Dark", comment: "")
+        }
+    }
+
+    var userInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .system: return .unspecified
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+func applyTheme(_ theme: AppTheme) {
+    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+        windowScene.windows.forEach { window in
+            window.overrideUserInterfaceStyle = theme.userInterfaceStyle
         }
     }
 }

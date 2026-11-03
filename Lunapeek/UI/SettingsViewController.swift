@@ -45,24 +45,26 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
-        case 0: return 1 // Language
-        case 1: return 4 // File Browser
-        case 2: return 1 // Video
-        case 3: return 1 // Audio
-        case 4: return 3 // Playback (repeat mode, auto play next, exit behavior)
-        case 5: return 2 // About
+        case 0: return 1 // Theme
+        case 1: return 1 // Language
+        case 2: return 4 // File Browser
+        case 3: return 1 // Video
+        case 4: return 1 // Audio
+        case 5: return 3 // Playback (repeat mode, auto play next, exit behavior)
+        case 6: return 2 // About
         default: return 0
         }
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch section {
-        case 0: return NSLocalizedString("Language", comment: "")
-        case 1: return NSLocalizedString("File Browser", comment: "")
-        case 2: return NSLocalizedString("Video", comment: "")
-        case 3: return NSLocalizedString("Audio", comment: "")
-        case 4: return NSLocalizedString("Playback", comment: "")
-        case 5: return NSLocalizedString("About", comment: "")
+        case 0: return NSLocalizedString("Theme", comment: "")
+        case 1: return NSLocalizedString("Language", comment: "")
+        case 2: return NSLocalizedString("File Browser", comment: "")
+        case 3: return NSLocalizedString("Video", comment: "")
+        case 4: return NSLocalizedString("Audio", comment: "")
+        case 5: return NSLocalizedString("Playback", comment: "")
+        case 6: return NSLocalizedString("About", comment: "")
         default: return nil
         }
     }
@@ -72,13 +74,19 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         cell.selectionStyle = .none
 
         switch indexPath.section {
-        case 0: // Language
+        case 0: // Theme
+            cell.textLabel?.text = NSLocalizedString("Theme", comment: "")
+            cell.detailTextLabel?.text = Settings.shared.theme.displayName
+            cell.selectionStyle = .default
+            cell.accessoryType = .disclosureIndicator
+
+        case 1: // Language
             cell.textLabel?.text = NSLocalizedString("Language", comment: "")
             cell.detailTextLabel?.text = Settings.shared.language.displayName
             cell.selectionStyle = .default
             cell.accessoryType = .disclosureIndicator
 
-        case 1: // File Browser
+        case 2: // File Browser
             switch indexPath.row {
             case 0:
                 cell.textLabel?.text = NSLocalizedString("Show Hidden Files", comment: "")
@@ -164,24 +172,26 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
 
         switch indexPath.section {
         case 0:
-            showLanguagePicker()
+            showThemePicker()
         case 1:
+            showLanguagePicker()
+        case 2:
             if indexPath.row == 3 {
                 clearRecentServers()
             }
-        case 2:
+        case 3:
             if indexPath.row == 0 {
                 showAspectRatioPicker()
             }
-        case 3:
-            break // Audio section - toggle only
         case 4:
+            break // Audio section - toggle only
+        case 5:
             if indexPath.row == 0 {
                 showRepeatModePicker()
             } else if indexPath.row == 2 {
                 showExitBehaviorPicker()
             }
-        case 5:
+        case 6:
             if indexPath.row == 1 {
                 showLicense()
             }
@@ -270,6 +280,15 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
             let language = Language.allCases[index]
             Settings.shared.language = language
             LanguageManager.shared.applyLanguage(language)
+        }
+    }
+
+    private func showThemePicker() {
+        let items = AppTheme.allCases.map { $0.displayName }
+        let selectedIndex = AppTheme.allCases.firstIndex(of: Settings.shared.theme) ?? 0
+        showPicker(title: NSLocalizedString("Theme", comment: ""), items: items, selectedIndex: selectedIndex) { index in
+            Settings.shared.theme = AppTheme.allCases[index]
+            self.tableView.reloadData()
         }
     }
 

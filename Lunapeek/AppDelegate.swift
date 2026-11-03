@@ -13,7 +13,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Don't configure audio session on launch - only when playback starts
         // This prevents interrupting other audio apps (like TikTok, music players)
 
-        // Initialize language
+        // Initialize theme and language
+        applyTheme(Settings.shared.theme)
         Bundle.setLanguage(LanguageManager.shared.currentLanguage)
 
         // Listen for language changes

@@ -44,6 +44,12 @@
 "Repeat One" = "Repeat One";
 "Repeat All" = "Repeat All";
 
+/* Theme */
+"Theme" = "Theme";
+"System Default" = "System Default";
+"Light" = "Light";
+"Dark" = "Dark";
+
 /* Language */
 "Language" = "Language";
 "System" = "System";

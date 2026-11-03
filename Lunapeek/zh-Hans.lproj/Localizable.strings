@@ -44,6 +44,12 @@
 "Repeat One" = "单曲循环";
 "Repeat All" = "列表循环";
 
+/* Theme */
+"Theme" = "主题";
+"System Default" = "跟随系统";
+"Light" = "浅色";
+"Dark" = "深色";
+
 /* Language */
 "Language" = "语言";
 "System" = "跟随系统";
