@@ -140,7 +140,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     }
 
     /// Get stream information for seek calculations.
-    public var streamInfo: [StreamInfo] {
+    public var streamInfo: [FFmpegStreamInfo] {
         guard let inputContext = inputFormatContext else { return [] }
 
         var info: [StreamInfo] = []
@@ -576,13 +576,13 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 
 // MARK: - Stream Info
 
-public struct StreamInfo {
+public struct FFmpegStreamInfo {
     public let index: Int
-    public let codecType: MediaCodecType
+    public let codecType: FFmpegMediaCodecType
     public let timeBase: (num: Int, den: Int)
     public let duration: Double
 
-    public enum MediaCodecType {
+    public enum FFmpegMediaCodecType {
         case video
         case audio
     }
