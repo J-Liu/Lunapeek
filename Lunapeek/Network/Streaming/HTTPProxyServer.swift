@@ -107,9 +107,12 @@ final class HTTPProxyServer: @unchecked Sendable {
 
         // Wait for server to be ready
         while true {
-            portLock.lock()
-            let currentPort = _port
-            portLock.unlock()
+            let currentPort = await MainActor.run {
+                portLock.lock()
+                let port = _port
+                portLock.unlock()
+                return port
+            }
             if currentPort > 0 { break }
             try await Task.sleep(nanoseconds: 10_000_000)
         }

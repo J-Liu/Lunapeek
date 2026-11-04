@@ -349,6 +349,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
             }
 
             let data = self.getRemuxedData(at: rangeStart, length: Int(contentLength))
+            let endOffset = rangeStart + contentLength - 1
 
             let headers: String
             if isRangeRequest {
