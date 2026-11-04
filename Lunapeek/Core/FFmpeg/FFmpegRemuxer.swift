@@ -143,16 +143,27 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     public var streamInfo: [FFmpegStreamInfo] {
         guard let inputContext = inputFormatContext else { return [] }
 
-        var info: [StreamInfo] = []
+        var info: [FFmpegStreamInfo] = []
         for i in 0..<Int(inputContext.pointee.nb_streams) {
             let stream = inputContext.pointee.streams.advanced(by: i).pointee!
             let codecParams = stream.pointee.codecpar
 
-            info.append(StreamInfo(
+            let codecType: FFmpegStreamInfo.FFmpegMediaCodecType
+            if codecParams?.pointee.codec_type == AVMEDIA_TYPE_VIDEO {
+                codecType = .video
+            } else {
+                codecType = .audio
+            }
+
+            let timeBaseNum = Int(stream.pointee.time_base.num)
+            let timeBaseDen = Int(stream.pointee.time_base.den)
+            let duration = Double(stream.pointee.duration) * Double(timeBaseNum) / Double(timeBaseDen)
+
+            info.append(FFmpegStreamInfo(
                 index: Int(stream.pointee.index),
-                codecType: codecParams.pointee.codec_type == AVMEDIA_TYPE_VIDEO ? .video : .audio,
-                timeBase: (num: Int(stream.pointee.time_base.num), den: Int(stream.pointee.time_base.den)),
-                duration: Double(stream.pointee.duration) * Double(stream.pointee.time_base.num) / Double(stream.pointee.time_base.den)
+                codecType: codecType,
+                timeBase: (num: timeBaseNum, den: timeBaseDen),
+                duration: duration
             ))
         }
         return info
@@ -210,7 +221,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         flushOutputBuffer()
 
         // Remux packets
-        let packet = av_packet_alloc()
+        var packet = av_packet_alloc()
         defer { av_packet_free(&packet) }
 
         while isRunning {
@@ -232,8 +243,8 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             let outStream = outputFormatContext!.pointee.streams.advanced(by: outStreamIndex).pointee!
 
             // Fix codec tag for HEVC (hev1 -> hvc1 for iOS compatibility)
-            if inStream.pointee.codecpar.pointee.codec_id == AV_CODEC_ID_HEVC {
-                outStream.pointee.codecpar.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
+            if inStream.pointee.codecpar?.pointee.codec_id == AV_CODEC_ID_HEVC {
+                outStream.pointee.codecpar?.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
             }
 
             // Rescale timestamps
@@ -335,7 +346,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         flushOutputBuffer()
 
         // Remux packets
-        let packet = av_packet_alloc()
+        var packet = av_packet_alloc()
         defer { av_packet_free(&packet) }
 
         while isRunning {
@@ -357,8 +368,8 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             let outStream = outputFormatContext!.pointee.streams.advanced(by: outStreamIndex).pointee!
 
             // Fix codec tag for HEVC
-            if inStream.pointee.codecpar.pointee.codec_id == AV_CODEC_ID_HEVC {
-                outStream.pointee.codecpar.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
+            if inStream.pointee.codecpar?.pointee.codec_id == AV_CODEC_ID_HEVC {
+                outStream.pointee.codecpar?.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
             }
 
             // Rescale timestamps
@@ -396,20 +407,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     ) -> Bool {
         // Allocate AVIO buffer
         let bufferSize = 32768
-        guard let buffer = av_malloc(bufferSize) else { return false }
-
-        // Store callback in a context object
-        let context = CustomInputContext(
-            fileName: fileName,
-            fileSize: fileSize,
-            readCallback: readCallback
-        )
-
-        let readPacketCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutablePointer<UInt8>?, Int32) -> Int32 = { opaque, buf, size in
-            guard let opaque = opaque, let buf = buf else { return -1 }
-            // This is a simplified version - real implementation needs async bridging
-            return -1
-        }
+        guard av_malloc(bufferSize) != nil else { return false }
 
         // For now, return false to indicate custom input is not fully implemented
         // Full implementation requires async bridging which is complex
@@ -430,7 +428,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 
         for i in 0..<Int(inputContext.pointee.nb_streams) {
             let inStream = inputContext.pointee.streams.advanced(by: i).pointee!
-            let codecParams = inStream.pointee.codecpar
+            guard let codecParams = inStream.pointee.codecpar else { continue }
 
             // Skip unknown codecs
             if codecParams.pointee.codec_id == AV_CODEC_ID_NONE {
@@ -449,7 +447,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 
             // Fix codec tag for HEVC
             if codecParams.pointee.codec_id == AV_CODEC_ID_HEVC {
-                outStream!.pointee.codecpar.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
+                outStream!.pointee.codecpar?.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
             }
 
             // Copy time base
@@ -560,7 +558,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         }
 
         if let inputContext = inputFormatContext {
-            var ctx = inputContext
+            var ctx: UnsafeMutablePointer<AVFormatContext>? = inputContext
             avformat_close_input(&ctx)
         }
 
