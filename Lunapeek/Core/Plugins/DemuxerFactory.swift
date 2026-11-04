@@ -7,12 +7,27 @@ import Foundation
 
 /// Factory for creating appropriate demuxer based on URL.
 public struct DemuxerFactory {
-    public static func createDemuxer(for url: URL) -> DemuxerPlugin {
-        let pathExtension = url.pathExtension.lowercased()
-        let systemSupported = ["mp4", "mov", "m4v", "3gp"]
+    /// Formats that can be played natively by iOS AVPlayer
+    private static let nativeFormats = ["mp4", "mov", "m4v", "3gp"]
 
+    /// Formats that need remuxing to MP4
+    private static let remuxFormats = ["mkv", "webm", "avi", "wmv", "asf", "flv", "ts", "mts", "m2ts"]
+
+    /// Check if a format needs remuxing
+    public static func needsRemux(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return remuxFormats.contains(ext)
+    }
+
+    /// Check if a format is natively supported
+    public static func isNativeFormat(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return nativeFormats.contains(ext)
+    }
+
+    public static func createDemuxer(for url: URL) -> DemuxerPlugin {
         // For MP4/MOV files (local or via HTTP proxy), use SystemDemuxerPlugin
-        if systemSupported.contains(pathExtension) {
+        if isNativeFormat(url) {
             return SystemDemuxerPlugin()
         }
 

@@ -15,6 +15,7 @@ final class PlayerViewController: UIViewController {
     private var avPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
     private var proxyServer: HTTPProxyServer?
+    private var remuxingProxyServer: RemuxingProxyServer?
     private var timeObserver: Any?
     private var videoView: UIView!
 
@@ -1068,6 +1069,15 @@ final class PlayerViewController: UIViewController {
         log("URL: \(url.absoluteString)")
         log("Extension: \(url.pathExtension)")
 
+        // Check if file needs remuxing
+        if DemuxerFactory.needsRemux(url) {
+            log("Format needs remuxing, starting RemuxingProxyServer")
+            Task {
+                await setupRemuxingPlayer()
+            }
+            return
+        }
+
         // For all files, use AVPlayer (more stable for local files)
         if url.scheme == "http" || url.scheme == "https" || url.isFileURL {
             log("Using AVPlayer")
@@ -1165,6 +1175,104 @@ final class PlayerViewController: UIViewController {
         // Update progress initially
         updateProgress()
 
+    }
+
+    private func setupRemuxingPlayer() async {
+        log("🔄 Setting up remuxing player for: \(url.lastPathComponent)")
+
+        // Create a reader for the file
+        let fileName = url.lastPathComponent
+        let fileSize: Int64
+
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            fileSize = attributes[.size] as? Int64 ?? 0
+        } catch {
+            log("❌ Failed to get file size: \(error)")
+            showError(error)
+            return
+        }
+
+        // Create reader closure
+        let reader: (Int64, Int) async throws -> Data = { offset, length in
+            let fileHandle = try FileHandle(forReadingFrom: self.url)
+            defer { try? fileHandle.close() }
+            try fileHandle.seek(toOffset: UInt64(offset))
+            let data = fileHandle.readData(ofLength: length)
+            return data
+        }
+
+        // Start remuxing proxy server
+        let proxy = RemuxingProxyServer()
+        remuxingProxyServer = proxy
+
+        do {
+            try await proxy.start(
+                fileName: fileName,
+                fileSize: fileSize,
+                reader: reader
+            )
+
+            guard let proxyURL = proxy.localURL else {
+                throw NSError(domain: "RemuxingError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get proxy URL"])
+            }
+
+            log("✅ Remuxing proxy started at: \(proxyURL)")
+
+            // Play from proxy URL
+            await setupAVPlayerWithURL(proxyURL)
+
+        } catch {
+            log("❌ Remuxing failed: \(error)")
+            showError(error)
+        }
+    }
+
+    private func setupAVPlayerWithURL(_ playURL: URL) async {
+        // Create player items
+        var items: [AVPlayerItem] = []
+        items.append(AVPlayerItem(url: playURL))
+
+        // Create AVQueuePlayer
+        let player = AVQueuePlayer(items: items)
+        avQueuePlayer = player
+
+        let shouldAutoPlay = Settings.shared.autoPlayNext
+        player.actionAtItemEnd = shouldAutoPlay ? .advance : .pause
+
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.frame = videoView.bounds
+        playerLayer.videoGravity = Settings.shared.defaultAspectRatio.videoGravity
+        videoView.layer.addSublayer(playerLayer)
+        avPlayerLayer = playerLayer
+
+        // Setup PiP if needed
+        if Settings.shared.exitBehavior == .pip {
+            if AVPictureInPictureController.isPictureInPictureSupported() {
+                pipController = try? AVPictureInPictureController(playerLayer: playerLayer)
+                pipController?.delegate = self
+            }
+        }
+
+        // Add time observer
+        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            self?.updateProgress()
+        }
+
+        // Observe video end
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerDidFinishPlaying),
+            name: .AVPlayerItemDidPlayToEndTime,
+            object: nil
+        )
+
+        activateAudioSession()
+        player.play()
+        log("✅ AVPlayer started with remuxed stream")
+        setPlayButtonIcon(isPlaying: true)
+        updateProgress()
     }
 
     @objc private func playerDidFinishPlaying() {
@@ -1632,6 +1740,8 @@ final class PlayerViewController: UIViewController {
         pipController = nil
         proxyServer?.stop()
         proxyServer = nil
+        remuxingProxyServer?.stop()
+        remuxingProxyServer = nil
         deactivateAudioSession()
 
         Task { [weak self] in
