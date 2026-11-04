@@ -12,16 +12,16 @@ CACHE_DIR="$SCRIPT_DIR/.cache"
 
 cd "$SCRIPT_DIR"
 
+# Source Nix daemon profile first
+if [ -f "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]; then
+    source "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+fi
+
 # Check Nix installation
 if ! command -v nix &> /dev/null; then
     echo "ERROR: Nix not found"
     echo "Install with: curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh"
     exit 1
-fi
-
-# Source Nix daemon profile
-if [ -f "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]; then
-    source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
 fi
 
 # Create cache directory
