@@ -92,6 +92,26 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         isRunning = false
     }
 
+    /// Seek to a specific timestamp (in seconds).
+    /// - Parameter timestamp: Target timestamp in seconds
+    /// - Returns: True if seek was successful
+    @discardableResult
+    public func seek(to timestamp: Double) -> Bool {
+        guard let inputContext = inputFormatContext else { return false }
+
+        let timeBase = inputContext.pointee.streams.pointee!.pointee.time_base
+        let targetPts = Int64(timestamp * Double(timeBase.den) / Double(timeBase.num))
+
+        let ret = av_seek_frame(inputContext, -1, targetPts, AVSEEK_FLAG_BACKWARD)
+        return ret >= 0
+    }
+
+    /// Get the duration of the input file (in seconds).
+    public var duration: Double {
+        guard let inputContext = inputFormatContext else { return 0 }
+        return Double(inputContext.pointee.duration) / Double(AV_TIME_BASE)
+    }
+
     // MARK: - Private
 
     private func remux(url: URL) throws {

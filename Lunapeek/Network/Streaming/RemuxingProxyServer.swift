@@ -191,6 +191,28 @@ final class RemuxingProxyServer: @unchecked Sendable {
         return complete
     }
 
+    private func restartRemuxer(atOffset offset: Int64) async {
+        // Stop current remuxer
+        remuxer?.stop()
+
+        // Clear buffer
+        remuxLock.lock()
+        remuxedData = Data()
+        remuxCompleted = false
+        remuxError = nil
+        remuxLock.unlock()
+
+        // Restart remuxer
+        await startRemuxer()
+
+        // Wait for some data
+        var attempts = 0
+        while getRemuxedSize() < 65536 && !isRemuxComplete() && attempts < 50 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            attempts += 1
+        }
+    }
+
     private func handleConnection(_ connection: NWConnection) {
         guard isRunning else {
             connection.cancel()
@@ -266,6 +288,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
 
         // Parse Range header
         var rangeStart: Int64 = 0
+        var rangeEnd: Int64 = Int64.max
         var isRangeRequest = false
 
         for line in lines {
@@ -274,6 +297,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
                 let rangeValue = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
                 if let range = parseRangeHeader(rangeValue) {
                     rangeStart = range.start
+                    rangeEnd = range.end
                 }
             }
         }
@@ -284,7 +308,14 @@ final class RemuxingProxyServer: @unchecked Sendable {
                 return
             }
 
-            // Wait for some data to be available or remux to complete
+            // For seek requests (large range jumps), we may need to restart remuxing
+            if isRangeRequest && rangeStart > self.getRemuxedSize() + 1048576 {
+                // Seek request beyond current buffer - restart remuxing from new position
+                self.log("Seek request to \(rangeStart), restarting remux")
+                await self.restartRemuxer(atOffset: rangeStart)
+            }
+
+            // Wait for data to be available at requested position
             var attempts = 0
             while self.getRemuxedSize() < rangeStart + 65536 && !self.isRemuxComplete() && attempts < 100 {
                 try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
@@ -305,10 +336,9 @@ final class RemuxingProxyServer: @unchecked Sendable {
                 return
             }
 
-            // For remuxed content, we use the current available size
-            // This allows progressive playback while remuxing continues
-            let endOffset = self.isRemuxComplete() ? currentSize - 1 : currentSize - 1
-            let contentLength = endOffset - rangeStart + 1
+            // Calculate actual range end
+            let actualEndOffset = min(rangeEnd, currentSize - 1)
+            let contentLength = max(0, actualEndOffset - rangeStart + 1)
 
             guard contentLength > 0 else {
                 // No data yet, wait and retry
@@ -378,6 +408,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
         if let contentRange = contentRange {
             headers += "Content-Range: \(contentRange)\r\n"
         }
+        headers += "Cache-Control: no-cache\r\n"
         headers += "\r\n"
         return headers
     }
