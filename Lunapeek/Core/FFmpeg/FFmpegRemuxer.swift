@@ -283,141 +283,31 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         fileSize: Int64,
         readCallback: @escaping (Int64, Int) async throws -> Data
     ) throws {
-        isRunning = true
+        // For custom reader (network streams), download to temp file first
+        // This is simpler than implementing custom AVIOContext
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + fileName)
 
-        // Create input format context with custom AVIOContext
-        var formatContext: UnsafeMutablePointer<AVFormatContext>?
-        guard avformat_alloc_output_context2(&formatContext, nil, nil, nil) >= 0 else {
-            throw RemuxerError.failedToOpenInput
+        // Download file
+        let fileHandle = try FileHandle(forWritingTo: tempURL)
+        defer { try? fileHandle.close() }
+
+        let chunkSize = 65536
+        var offset: Int64 = 0
+
+        while offset < fileSize {
+            let length = Int(min(Int64(chunkSize), fileSize - offset))
+            let data = try await readCallback(offset, length)
+            fileHandle.write(data)
+            offset += Int64(data.count)
         }
 
-        // Setup custom input AVIOContext
-        guard setupCustomInputAVIOContext(
-            formatContext: formatContext!,
-            fileName: fileName,
-            fileSize: fileSize,
-            readCallback: readCallback
-        ) else {
-            avformat_free_context(formatContext)
-            throw RemuxerError.failedToOpenInput
-        }
+        try fileHandle.close()
 
-        // Open input
-        guard avformat_open_input(&formatContext, nil, nil, nil) >= 0 else {
-            cleanup()
-            throw RemuxerError.failedToOpenInput
-        }
+        // Now remux the temp file
+        try remux(url: tempURL)
 
-        inputFormatContext = formatContext
-
-        // Retrieve stream info
-        guard avformat_find_stream_info(formatContext, nil) >= 0 else {
-            cleanup()
-            throw RemuxerError.failedToFindStreamInfo
-        }
-
-        // Create output format context (MP4)
-        var outputContext: UnsafeMutablePointer<AVFormatContext>?
-        guard avformat_alloc_output_context2(&outputContext, nil, "mp4", nil) >= 0 else {
-            cleanup()
-            throw RemuxerError.failedToCreateOutput
-        }
-
-        outputFormatContext = outputContext
-
-        // Setup custom output AVIOContext
-        guard setupCustomAVIOContext() else {
-            cleanup()
-            throw RemuxerError.failedToCreateOutput
-        }
-
-        // Setup streams
-        guard setupStreams() else {
-            cleanup()
-            throw RemuxerError.failedToSetupStreams
-        }
-
-        // Write header
-        guard avformat_write_header(outputContext, nil) >= 0 else {
-            cleanup()
-            throw RemuxerError.failedToWriteHeader
-        }
-
-        flushOutputBuffer()
-
-        // Remux packets
-        var packet = av_packet_alloc()
-        defer { av_packet_free(&packet) }
-
-        while isRunning {
-            let ret = av_read_frame(inputFormatContext, packet)
-            if ret < 0 {
-                if ret == AVERROR_EOF || ret == -541478725 {
-                    break
-                }
-                continue
-            }
-
-            let inStreamIndex = Int(packet!.pointee.stream_index)
-            guard let outStreamIndex = streamMapping[inStreamIndex], outStreamIndex >= 0 else {
-                av_packet_unref(packet)
-                continue
-            }
-
-            let inStream = inputFormatContext!.pointee.streams.advanced(by: inStreamIndex).pointee!
-            let outStream = outputFormatContext!.pointee.streams.advanced(by: outStreamIndex).pointee!
-
-            // Fix codec tag for HEVC
-            if inStream.pointee.codecpar?.pointee.codec_id == AV_CODEC_ID_HEVC {
-                outStream.pointee.codecpar?.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
-            }
-
-            // Rescale timestamps
-            packet!.pointee.stream_index = Int32(outStreamIndex)
-            av_packet_rescale_ts(
-                packet!,
-                inStream.pointee.time_base,
-                outStream.pointee.time_base
-            )
-
-            // Write packet
-            guard av_interleaved_write_frame(outputFormatContext, packet) >= 0 else {
-                av_packet_unref(packet)
-                continue
-            }
-
-            av_packet_unref(packet)
-            flushOutputBuffer()
-        }
-
-        // Write trailer
-        av_write_trailer(outputContext)
-        flushOutputBuffer()
-
-        cleanup()
-
-        delegate?.remuxerDidComplete(error: nil)
-    }
-
-    private func setupCustomInputAVIOContext(
-        formatContext: UnsafeMutablePointer<AVFormatContext>,
-        fileName: String,
-        fileSize: Int64,
-        readCallback: @escaping (Int64, Int) async throws -> Data
-    ) -> Bool {
-        // Allocate AVIO buffer
-        let bufferSize = 32768
-        guard av_malloc(bufferSize) != nil else { return false }
-
-        // For now, return false to indicate custom input is not fully implemented
-        // Full implementation requires async bridging which is complex
-        return false
-    }
-
-    private struct CustomInputContext {
-        let fileName: String
-        let fileSize: Int64
-        let readCallback: (Int64, Int) async throws -> Data
+        // Clean up temp file
+        try? FileManager.default.removeItem(at: tempURL)
     }
 
     private func setupStreams() -> Bool {
