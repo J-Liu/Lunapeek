@@ -7,3 +7,8 @@ module FFmpegBridge {
     header "FFmpegBridge.h"
     export *
 }
+
+module FFmpegIOBridge {
+    header "Core/FFmpeg/FFmpegIOBridge.h"
+    export *
+}

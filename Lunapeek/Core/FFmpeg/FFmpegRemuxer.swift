@@ -24,8 +24,20 @@ public protocol RemuxerOutputDelegate: AnyObject {
     func remuxerDidComplete(error: Error?)
 }
 
+/// Context for IO callbacks
+private class IOContext {
+    var readCallback: ((Int64, Int) async throws -> Data)?
+    var writeCallback: ((Data) -> Void)?
+    var seekCallback: ((Int64, Int) -> Int64)?
+    var fileSize: Int64 = 0
+    var currentPosition: Int64 = 0
+    var outputBuffer = Data()
+    let bufferLock = NSLock()
+
+    init() {}
+}
+
 /// FFmpeg-based remuxer for converting MKV/WebM/AVI/etc to MP4 on-the-fly.
-/// Uses avformat API to read input and write MP4 output to a delegate.
 public final class FFmpegRemuxer: @unchecked Sendable {
     private var inputFormatContext: UnsafeMutablePointer<AVFormatContext>?
     private var outputFormatContext: UnsafeMutablePointer<AVFormatContext>?
@@ -33,52 +45,28 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     private var isRunning = false
     private let queue = DispatchQueue(label: "com.lunapeek.remuxer", qos: .userInitiated)
     private weak var delegate: RemuxerOutputDelegate?
+    private var ioContext = IOContext()
 
-    // Output buffer for custom AVIOContext
-    private var outputBuffer = Data()
-    private let bufferLock = NSLock()
-    private var avioContext: UnsafeMutablePointer<AVIOContext>?
-    private var avioBuffer: UnsafeMutablePointer<UInt8>?
-
-    // Ring buffer configuration
-    private let maxBufferSize = 10 * 1024 * 1024 // 10MB max buffer
-    private var totalBytesWritten: Int64 = 0
-    private var totalBytesRead: Int64 = 0
+    // C callbacks are stored to prevent deallocation
+    private var inputIO: UnsafeMutablePointer<AVIOContext>?
+    private var outputIO: UnsafeMutablePointer<AVIOContext>?
 
     public init() {}
 
     /// Start remuxing from a file URL.
-    /// - Parameters:
-    ///   - url: Input file URL (local or network)
-    ///   - delegate: Delegate to receive remuxed data
     public func start(url: URL, delegate: RemuxerOutputDelegate) {
         self.delegate = delegate
-
-        // Use background QoS for remuxing to not block UI
-        let backgroundQueue = DispatchQueue(
-            label: "com.lunapeek.remuxer.background",
-            qos: .background,
-            attributes: .concurrent
-        )
-
-        backgroundQueue.async { [weak self] in
+        queue.async { [weak self] in
             guard let self = self else { return }
             do {
                 try self.remux(url: url)
             } catch {
-                DispatchQueue.main.async {
-                    self.delegate?.remuxerDidComplete(error: error)
-                }
+                self.delegate?.remuxerDidComplete(error: error)
             }
         }
     }
 
     /// Start remuxing from a custom data source.
-    /// - Parameters:
-    ///   - fileName: Original filename (for format detection)
-    ///   - fileSize: Total file size
-    ///   - readCallback: Async callback to read data at offset
-    ///   - delegate: Delegate to receive remuxed data
     public func start(
         fileName: String,
         fileSize: Int64,
@@ -86,87 +74,99 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         delegate: RemuxerOutputDelegate
     ) {
         self.delegate = delegate
+        ioContext.readCallback = readCallback
+        ioContext.fileSize = fileSize
 
         queue.async { [weak self] in
             guard let self = self else { return }
             do {
-                try self.remuxWithCustomReader(
-                    fileName: fileName,
-                    fileSize: fileSize,
-                    readCallback: readCallback
-                )
+                try self.remuxWithCustomIO(fileSize: fileSize)
             } catch {
                 self.delegate?.remuxerDidComplete(error: error)
             }
         }
     }
 
-    /// Stop remuxing.
     public func stop() {
         isRunning = false
     }
 
-    /// Seek to a specific timestamp (in seconds).
-    /// - Parameter timestamp: Target timestamp in seconds
-    /// - Returns: True if seek was successful
-    @discardableResult
-    public func seek(to timestamp: Double) -> Bool {
-        guard let inputContext = inputFormatContext else { return false }
+    // MARK: - C Callbacks (exposed to C)
 
-        // Find video stream for time base
-        var videoStream: UnsafeMutablePointer<AVStream>?
-        for i in 0..<Int(inputContext.pointee.nb_streams) {
-            let stream = inputContext.pointee.streams.advanced(by: i).pointee!
-            if stream.pointee.codecpar.pointee.codec_type == AVMEDIA_TYPE_VIDEO {
-                videoStream = stream
-                break
+    func handleRead(buf: UnsafeMutablePointer<UInt8>, size: Int) -> Int {
+        guard let readCallback = ioContext.readCallback else { return -1 }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var resultData: Data?
+        var resultError: Error?
+
+        Task {
+            do {
+                resultData = try await readCallback(ioContext.currentPosition, size)
+            } catch {
+                resultError = error
             }
+            semaphore.signal()
         }
 
-        guard let stream = videoStream else { return false }
+        semaphore.wait()
 
-        let timeBase = stream.pointee.time_base
-        let targetPts = Int64(timestamp * Double(timeBase.den) / Double(timeBase.num))
-
-        // Seek with backward flag to find keyframe
-        let ret = av_seek_frame(inputContext, Int32(stream.pointee.index), targetPts, AVSEEK_FLAG_BACKWARD)
-        return ret >= 0
-    }
-
-    /// Get the duration of the input file (in seconds).
-    public var duration: Double {
-        guard let inputContext = inputFormatContext else { return 0 }
-        return Double(inputContext.pointee.duration) / Double(AV_TIME_BASE)
-    }
-
-    /// Get stream information for seek calculations.
-    public var streamInfo: [FFmpegStreamInfo] {
-        guard let inputContext = inputFormatContext else { return [] }
-
-        var info: [FFmpegStreamInfo] = []
-        for i in 0..<Int(inputContext.pointee.nb_streams) {
-            let stream = inputContext.pointee.streams.advanced(by: i).pointee!
-            let codecParams = stream.pointee.codecpar
-
-            let codecType: FFmpegStreamInfo.FFmpegMediaCodecType
-            if codecParams?.pointee.codec_type == AVMEDIA_TYPE_VIDEO {
-                codecType = .video
-            } else {
-                codecType = .audio
-            }
-
-            let timeBaseNum = Int(stream.pointee.time_base.num)
-            let timeBaseDen = Int(stream.pointee.time_base.den)
-            let duration = Double(stream.pointee.duration) * Double(timeBaseNum) / Double(timeBaseDen)
-
-            info.append(FFmpegStreamInfo(
-                index: Int(stream.pointee.index),
-                codecType: codecType,
-                timeBase: (num: timeBaseNum, den: timeBaseDen),
-                duration: duration
-            ))
+        if let error = resultError {
+            print("Read error: \(error)")
+            return -1
         }
-        return info
+
+        guard let data = resultData else { return -1 }
+
+        data.withUnsafeBytes { bytes in
+            memcpy(buf, bytes.baseAddress, data.count)
+        }
+
+        ioContext.currentPosition += Int64(data.count)
+        return data.count
+    }
+
+    func handleWrite(buf: UnsafePointer<UInt8>, size: Int) -> Int {
+        let data = Data(bytes: buf, count: size)
+
+        ioContext.bufferLock.lock()
+        ioContext.outputBuffer.append(data)
+        let shouldFlush = ioContext.outputBuffer.count >= 65536
+        let dataToSend = shouldFlush ? ioContext.outputBuffer : nil
+        if shouldFlush {
+            ioContext.outputBuffer = Data()
+        }
+        ioContext.bufferLock.unlock()
+
+        if let dataToSend = dataToSend {
+            delegate?.remuxerDidOutputData(dataToSend)
+        }
+
+        return size
+    }
+
+    func handleSeek(offset: Int64, whence: Int) -> Int64 {
+        let SEEK_SET = 0
+        let SEEK_CUR = 1
+        let SEEK_END = 2
+        let AVSEEK_SIZE = 0x10000
+
+        if whence == AVSEEK_SIZE {
+            return ioContext.fileSize
+        }
+
+        switch whence {
+        case SEEK_SET:
+            ioContext.currentPosition = offset
+        case SEEK_CUR:
+            ioContext.currentPosition += offset
+        case SEEK_END:
+            ioContext.currentPosition = ioContext.fileSize + offset
+        default:
+            return -1
+        }
+
+        return ioContext.currentPosition
     }
 
     // MARK: - Private
@@ -190,6 +190,53 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             throw RemuxerError.failedToFindStreamInfo
         }
 
+        // Create output
+        try createOutputAndRemux()
+    }
+
+    private func remuxWithCustomIO(fileSize: Int64) throws {
+        isRunning = true
+
+        // Create input format context
+        var formatContext: UnsafeMutablePointer<AVFormatContext>?
+        formatContext = avformat_alloc_context()
+        guard formatContext != nil else {
+            throw RemuxerError.failedToOpenInput
+        }
+
+        // Create custom input IO
+        let ioCtx = ff_create_input_io(Unmanaged.passUnretained(self).toOpaque(), fileSize)
+        guard ioCtx != nil else {
+            avformat_free_context(formatContext)
+            throw RemuxerError.failedToOpenInput
+        }
+
+        inputIO = ioCtx
+        formatContext!.pointee.pb = ioCtx
+
+        // Open input (probing format from IO)
+        guard avformat_open_input(&formatContext, nil, nil, nil) >= 0 else {
+            cleanup()
+            throw RemuxerError.failedToOpenInput
+        }
+
+        inputFormatContext = formatContext
+
+        // Retrieve stream info
+        guard avformat_find_stream_info(formatContext, nil) >= 0 else {
+            cleanup()
+            throw RemuxerError.failedToFindStreamInfo
+        }
+
+        // Create output
+        try createOutputAndRemux()
+    }
+
+    private func createOutputAndRemux() throws {
+        guard let inputContext = inputFormatContext else {
+            throw RemuxerError.failedToOpenInput
+        }
+
         // Create output format context (MP4)
         var outputContext: UnsafeMutablePointer<AVFormatContext>?
         guard avformat_alloc_output_context2(&outputContext, nil, "mp4", nil) >= 0 else {
@@ -199,11 +246,16 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 
         outputFormatContext = outputContext
 
-        // Setup custom AVIOContext for memory output
-        guard setupCustomAVIOContext() else {
+        // Create custom output IO
+        let ioCtx = ff_create_output_io(Unmanaged.passUnretained(self).toOpaque())
+        guard ioCtx != nil else {
             cleanup()
             throw RemuxerError.failedToCreateOutput
         }
+
+        outputIO = ioCtx
+        outputContext!.pointee.pb = ioCtx
+        outputContext!.pointee.flags |= AVFMT_FLAG_CUSTOM_IO
 
         // Setup streams
         guard setupStreams() else {
@@ -217,7 +269,6 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             throw RemuxerError.failedToWriteHeader
         }
 
-        // Flush any header data
         flushOutputBuffer()
 
         // Remux packets
@@ -225,7 +276,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         defer { av_packet_free(&packet) }
 
         while isRunning {
-            let ret = av_read_frame(inputFormatContext, packet)
+            let ret = av_read_frame(inputContext, packet)
             if ret < 0 {
                 if ret == AVERROR_EOF || ret == -541478725 {
                     break
@@ -239,10 +290,10 @@ public final class FFmpegRemuxer: @unchecked Sendable {
                 continue
             }
 
-            let inStream = inputFormatContext!.pointee.streams.advanced(by: inStreamIndex).pointee!
-            let outStream = outputFormatContext!.pointee.streams.advanced(by: outStreamIndex).pointee!
+            let inStream = inputContext.pointee.streams.advanced(by: inStreamIndex).pointee!
+            let outStream = outputContext!.pointee.streams.advanced(by: outStreamIndex).pointee!
 
-            // Fix codec tag for HEVC (hev1 -> hvc1 for iOS compatibility)
+            // Fix codec tag for HEVC
             if inStream.pointee.codecpar?.pointee.codec_id == AV_CODEC_ID_HEVC {
                 outStream.pointee.codecpar?.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
             }
@@ -256,14 +307,12 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             )
 
             // Write packet
-            guard av_interleaved_write_frame(outputFormatContext, packet) >= 0 else {
+            guard av_interleaved_write_frame(outputContext, packet) >= 0 else {
                 av_packet_unref(packet)
                 continue
             }
 
             av_packet_unref(packet)
-
-            // Flush output buffer periodically
             flushOutputBuffer()
         }
 
@@ -274,40 +323,6 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         cleanup()
 
         delegate?.remuxerDidComplete(error: nil)
-    }
-
-    // MARK: - Custom Reader Support
-
-    private func remuxWithCustomReader(
-        fileName: String,
-        fileSize: Int64,
-        readCallback: @escaping (Int64, Int) async throws -> Data
-    ) throws {
-        // For custom reader (network streams), download to temp file first
-        // This is simpler than implementing custom AVIOContext
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + fileName)
-
-        // Download file
-        let fileHandle = try FileHandle(forWritingTo: tempURL)
-        defer { try? fileHandle.close() }
-
-        let chunkSize = 65536
-        var offset: Int64 = 0
-
-        while offset < fileSize {
-            let length = Int(min(Int64(chunkSize), fileSize - offset))
-            let data = try await readCallback(offset, length)
-            fileHandle.write(data)
-            offset += Int64(data.count)
-        }
-
-        try fileHandle.close()
-
-        // Now remux the temp file
-        try remux(url: tempURL)
-
-        // Clean up temp file
-        try? FileManager.default.removeItem(at: tempURL)
     }
 
     private func setupStreams() -> Bool {
@@ -337,7 +352,7 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 
             // Fix codec tag for HEVC
             if codecParams.pointee.codec_id == AV_CODEC_ID_HEVC {
-                outStream!.pointee.codecpar?.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
+                outStream.pointee.codecpar?.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
             }
 
             // Copy time base
@@ -349,87 +364,11 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         return true
     }
 
-    private func setupCustomAVIOContext() -> Bool {
-        guard let outputContext = outputFormatContext else { return false }
-
-        // Allocate AVIO buffer
-        let bufferSize = 32768
-        guard let buffer = av_malloc(bufferSize) else { return false }
-
-        avioBuffer = buffer.assumingMemoryBound(to: UInt8.self)
-
-        // Create custom AVIOContext with write callback
-        let writeCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int32) -> Int32 = { opaque, buf, size in
-            guard let opaque = opaque, let buf = buf else { return -1 }
-            let remuxer = Unmanaged<FFmpegRemuxer>.fromOpaque(opaque).takeUnretainedValue()
-            return remuxer.handleWrite(data: buf, size: Int(size))
-        }
-
-        let seekCallback: @convention(c) (UnsafeMutableRawPointer?, Int64, Int32) -> Int64 = { opaque, offset, whence in
-            guard let opaque = opaque else { return -1 }
-            let remuxer = Unmanaged<FFmpegRemuxer>.fromOpaque(opaque).takeUnretainedValue()
-            return remuxer.handleSeek(offset: offset, whence: whence)
-        }
-
-        guard let avio = avio_alloc_context(
-            avioBuffer,
-            Int32(bufferSize),
-            1, // write_flag
-            Unmanaged.passUnretained(self).toOpaque(),
-            nil, // read_packet
-            writeCallback,
-            seekCallback
-        ) else {
-            return false
-        }
-
-        avioContext = avio
-        outputContext.pointee.pb = avio
-        outputContext.pointee.flags |= AVFMT_FLAG_CUSTOM_IO
-
-        return true
-    }
-
-    private func handleWrite(data: UnsafePointer<UInt8>, size: Int) -> Int32 {
-        bufferLock.lock()
-
-        // Check if buffer would exceed max size
-        while outputBuffer.count + size > maxBufferSize {
-            // Wait for consumer to read data
-            bufferLock.unlock()
-            Thread.sleep(forTimeInterval: 0.01)
-            bufferLock.lock()
-        }
-
-        outputBuffer.append(data, count: size)
-        totalBytesWritten += Int64(size)
-
-        let shouldFlush = outputBuffer.count >= 65536 // Flush every 64KB
-        let dataToSend = shouldFlush ? outputBuffer : nil
-        if shouldFlush {
-            outputBuffer = Data()
-        }
-        bufferLock.unlock()
-
-        // Send data to delegate outside the lock
-        if let dataToSend = dataToSend {
-            delegate?.remuxerDidOutputData(dataToSend)
-        }
-
-        return Int32(size)
-    }
-
-    private func handleSeek(offset: Int64, whence: Int32) -> Int64 {
-        // For streaming output, seeking is not supported
-        // Return current position
-        return 0
-    }
-
     private func flushOutputBuffer() {
-        bufferLock.lock()
-        let dataToSend = outputBuffer.isEmpty ? nil : outputBuffer
-        outputBuffer = Data()
-        bufferLock.unlock()
+        ioContext.bufferLock.lock()
+        let dataToSend = ioContext.outputBuffer.isEmpty ? nil : ioContext.outputBuffer
+        ioContext.outputBuffer = Data()
+        ioContext.bufferLock.unlock()
 
         if let data = dataToSend {
             delegate?.remuxerDidOutputData(data)
@@ -441,9 +380,6 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             if outputContext.pointee.pb != nil {
                 avio_close(outputContext.pointee.pb)
             }
-            // Don't free avioBuffer here, avio_close handles it
-            avioBuffer = nil
-            avioContext = nil
             avformat_free_context(outputContext)
         }
 
@@ -452,27 +388,18 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             avformat_close_input(&ctx)
         }
 
+        // Free IO contexts
+        if let io = inputIO {
+            ff_free_io(io)
+        }
+        if let io = outputIO {
+            ff_free_io(io)
+        }
+
         outputFormatContext = nil
         inputFormatContext = nil
-
-        // Clear any remaining data
-        bufferLock.lock()
-        outputBuffer = Data()
-        bufferLock.unlock()
-    }
-}
-
-// MARK: - Stream Info
-
-public struct FFmpegStreamInfo {
-    public let index: Int
-    public let codecType: FFmpegMediaCodecType
-    public let timeBase: (num: Int, den: Int)
-    public let duration: Double
-
-    public enum FFmpegMediaCodecType {
-        case video
-        case audio
+        inputIO = nil
+        outputIO = nil
     }
 }
 
@@ -482,5 +409,4 @@ private func MKTAG(_ a: UInt8, _ b: UInt8, _ c: UInt8, _ d: UInt8) -> UInt32 {
     return UInt32(a) | (UInt32(b) << 8) | (UInt32(c) << 16) | (UInt32(d) << 24)
 }
 
-// AVERROR_EOF constant
 private let AVERROR_EOF: Int32 = -541478725

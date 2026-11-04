@@ -13,4 +13,7 @@
 #include <libavutil/error.h>
 #include <libavutil/timestamp.h>
 
+// IO Bridge
+#include "Core/FFmpeg/FFmpegIOBridge.h"
+
 #endif /* FFMPEGBRIDGE_H */
