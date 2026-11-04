@@ -13,6 +13,9 @@ public struct DemuxerFactory {
     /// Formats that need remuxing to MP4
     private static let remuxFormats = ["mkv", "webm", "avi", "wmv", "asf", "flv", "ts", "mts", "m2ts"]
 
+    /// Formats that are completely unsupported
+    private static let unsupportedFormats = ["wmv", "asf", "rm", "rmvb", "vob", "ifo"]
+
     /// Check if a format needs remuxing
     public static func needsRemux(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
@@ -23,6 +26,18 @@ public struct DemuxerFactory {
     public static func isNativeFormat(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
         return nativeFormats.contains(ext)
+    }
+
+    /// Check if a format is completely unsupported
+    public static func isUnsupported(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return unsupportedFormats.contains(ext)
+    }
+
+    /// Get supported formats for display in error messages
+    public static var supportedFormats: String {
+        let allSupported = nativeFormats + remuxFormats
+        return allSupported.joined(separator: ", ")
     }
 
     public static func createDemuxer(for url: URL) -> DemuxerPlugin {

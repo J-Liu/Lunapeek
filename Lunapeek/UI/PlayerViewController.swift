@@ -1069,6 +1069,13 @@ final class PlayerViewController: UIViewController {
         log("URL: \(url.absoluteString)")
         log("Extension: \(url.pathExtension)")
 
+        // Check if format is completely unsupported
+        if DemuxerFactory.isUnsupported(url) {
+            log("Unsupported format: \(url.pathExtension)")
+            showUnsupportedFormatAlert()
+            return
+        }
+
         // Check if file needs remuxing
         if DemuxerFactory.needsRemux(url) {
             log("Format needs remuxing, starting RemuxingProxyServer")
@@ -1895,6 +1902,18 @@ final class PlayerViewController: UIViewController {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func showUnsupportedFormatAlert() {
+        let alert = UIAlertController(
+            title: L("Unsupported Format"),
+            message: L("This file format is not supported for playback."),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: L("OK"), style: .default) { [weak self] _ in
+            self?.dismiss(animated: true)
+        })
         present(alert, animated: true)
     }
 

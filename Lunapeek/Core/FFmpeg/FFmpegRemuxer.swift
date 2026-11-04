@@ -40,6 +40,11 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     private var avioContext: UnsafeMutablePointer<AVIOContext>?
     private var avioBuffer: UnsafeMutablePointer<UInt8>?
 
+    // Ring buffer configuration
+    private let maxBufferSize = 10 * 1024 * 1024 // 10MB max buffer
+    private var totalBytesWritten: Int64 = 0
+    private var totalBytesRead: Int64 = 0
+
     public init() {}
 
     /// Start remuxing from a file URL.
@@ -49,12 +54,21 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     public func start(url: URL, delegate: RemuxerOutputDelegate) {
         self.delegate = delegate
 
-        queue.async { [weak self] in
+        // Use background QoS for remuxing to not block UI
+        let backgroundQueue = DispatchQueue(
+            label: "com.lunapeek.remuxer.background",
+            qos: .background,
+            attributes: .concurrent
+        )
+
+        backgroundQueue.async { [weak self] in
             guard let self = self else { return }
             do {
                 try self.remux(url: url)
             } catch {
-                self.delegate?.remuxerDidComplete(error: error)
+                DispatchQueue.main.async {
+                    self.delegate?.remuxerDidComplete(error: error)
+                }
             }
         }
     }
@@ -99,10 +113,23 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     public func seek(to timestamp: Double) -> Bool {
         guard let inputContext = inputFormatContext else { return false }
 
-        let timeBase = inputContext.pointee.streams.pointee!.pointee.time_base
+        // Find video stream for time base
+        var videoStream: UnsafeMutablePointer<AVStream>?
+        for i in 0..<Int(inputContext.pointee.nb_streams) {
+            let stream = inputContext.pointee.streams.advanced(by: i).pointee!
+            if stream.pointee.codecpar.pointee.codec_type == AVMEDIA_TYPE_VIDEO {
+                videoStream = stream
+                break
+            }
+        }
+
+        guard let stream = videoStream else { return false }
+
+        let timeBase = stream.pointee.time_base
         let targetPts = Int64(timestamp * Double(timeBase.den) / Double(timeBase.num))
 
-        let ret = av_seek_frame(inputContext, -1, targetPts, AVSEEK_FLAG_BACKWARD)
+        // Seek with backward flag to find keyframe
+        let ret = av_seek_frame(inputContext, Int32(stream.pointee.index), targetPts, AVSEEK_FLAG_BACKWARD)
         return ret >= 0
     }
 
@@ -110,6 +137,25 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     public var duration: Double {
         guard let inputContext = inputFormatContext else { return 0 }
         return Double(inputContext.pointee.duration) / Double(AV_TIME_BASE)
+    }
+
+    /// Get stream information for seek calculations.
+    public var streamInfo: [StreamInfo] {
+        guard let inputContext = inputFormatContext else { return [] }
+
+        var info: [StreamInfo] = []
+        for i in 0..<Int(inputContext.pointee.nb_streams) {
+            let stream = inputContext.pointee.streams.advanced(by: i).pointee!
+            let codecParams = stream.pointee.codecpar
+
+            info.append(StreamInfo(
+                index: Int(stream.pointee.index),
+                codecType: codecParams.pointee.codec_type == AVMEDIA_TYPE_VIDEO ? .video : .audio,
+                timeBase: (num: Int(stream.pointee.time_base.num), den: Int(stream.pointee.time_base.den)),
+                duration: Double(stream.pointee.duration) * Double(stream.pointee.time_base.num) / Double(stream.pointee.time_base.den)
+            ))
+        }
+        return info
     }
 
     // MARK: - Private
@@ -458,7 +504,18 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 
     private func handleWrite(data: UnsafePointer<UInt8>, size: Int) -> Int32 {
         bufferLock.lock()
+
+        // Check if buffer would exceed max size
+        while outputBuffer.count + size > maxBufferSize {
+            // Wait for consumer to read data
+            bufferLock.unlock()
+            Thread.sleep(forTimeInterval: 0.01)
+            bufferLock.lock()
+        }
+
         outputBuffer.append(data, count: size)
+        totalBytesWritten += Int64(size)
+
         let shouldFlush = outputBuffer.count >= 65536 // Flush every 64KB
         let dataToSend = shouldFlush ? outputBuffer : nil
         if shouldFlush {
@@ -514,6 +571,20 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         bufferLock.lock()
         outputBuffer = Data()
         bufferLock.unlock()
+    }
+}
+
+// MARK: - Stream Info
+
+public struct StreamInfo {
+    public let index: Int
+    public let codecType: MediaCodecType
+    public let timeBase: (num: Int, den: Int)
+    public let duration: Double
+
+    public enum MediaCodecType {
+        case video
+        case audio
     }
 }
 

@@ -155,3 +155,8 @@
 "Move to" = "Move to";
 "Copy to" = "Copy to";
 "Duplicate" = "Duplicate";
+
+/* Error Dialogs */
+"Unsupported Format" = "Unsupported Format";
+"This file format is not supported for playback." = "This file format is not supported for playback.";
+"OK" = "OK";

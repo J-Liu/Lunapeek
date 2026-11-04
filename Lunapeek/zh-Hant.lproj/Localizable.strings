@@ -154,3 +154,8 @@
 "Move to" = "移動到";
 "Copy to" = "複製到";
 "Duplicate" = "建立副本";
+
+/* Error Dialogs */
+"Unsupported Format" = "不支援的格式";
+"This file format is not supported for playback." = "此檔案格式不支援播放。";
+"OK" = "確定";
