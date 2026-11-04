@@ -59,10 +59,7 @@ echo ""
     -x \
     --enable-lib-ios-videotoolbox \
     --enable-lib-ios-audiotoolbox \
-    --enable-lib-ios-avfoundation \
-    --enable-lib-dav1d \
-    --enable-lib-libvpx \
-    --enable-lib-opus
+    --enable-lib-ios-avfoundation
 
 # Print output location
 PRODUCT_PATH="$SCRIPT_DIR/$FFMPEG_KIT_DIR/prebuilt/bundle-apple-xcframework-ios-12.1"
