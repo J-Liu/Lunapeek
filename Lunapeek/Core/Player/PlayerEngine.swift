@@ -220,8 +220,10 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         // Seek demuxer - use -1 as stream index to use AV_TIME_BASE units
         let success = demuxer?.seek(to: timestamp, streamIndex: -1) ?? false
 
-        // Set audio clock to target time
+        // Set audio clock to target time and pause it
+        // It will be resumed when new audio frames arrive
         let targetTime = CMTime(seconds: timestampSec, preferredTimescale: 1000000000)
+        audioClock.pause()
         audioClock.setTime(targetTime)
 
         // Set video clock base time
@@ -242,6 +244,8 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
                 demuxer?.start()
                 videoRendererPlay?()
                 audioRendererPlay?()
+                // Resume audio clock when playback continues
+                audioClock.resume()
             }
         } else {
             debugLog("⚠️ PlayerEngine: Seek failed")

@@ -1621,6 +1621,8 @@ final class PlayerViewController: UIViewController {
                 // Get current playback position
                 if let player = avQueuePlayer {
                     seekStartSeconds = player.currentTime().seconds
+                } else if let engine = lpPlayerEngine {
+                    seekStartSeconds = Double(engine.currentTime) / Double(AV_TIME_BASE)
                 } else {
                     seekStartSeconds = 0
                 }
@@ -1641,10 +1643,15 @@ final class PlayerViewController: UIViewController {
 
                 showSeekIndicator(seconds: clampedTime)
 
-                // Seek to position (throttled)
-                let time = CMTime(seconds: clampedTime, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-                let tolerance = CMTime(seconds: 1, preferredTimescale: 600)
-                avQueuePlayer?.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
+                // Seek to position
+                if let player = avQueuePlayer {
+                    let time = CMTime(seconds: clampedTime, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+                    let tolerance = CMTime(seconds: 1, preferredTimescale: 600)
+                    player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
+                } else if let engine = lpPlayerEngine {
+                    // For LPPlayerEngine, only perform final seek on gesture end
+                    // Just show indicator during gesture
+                }
             } else {
                 // Vertical swipe for brightness/volume
                 let deltaY = initialPanY - location.y
@@ -1671,6 +1678,20 @@ final class PlayerViewController: UIViewController {
                 seekIndicatorTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
                     self?.seekIndicatorView?.removeFromSuperview()
                     self?.seekIndicatorView = nil
+                }
+
+                // For LPPlayerEngine, perform the final seek
+                if let engine = lpPlayerEngine {
+                    let deltaX = location.x - initialPanX
+                    let seekDelta = TimeInterval(deltaX * 0.5)
+                    let newTime = seekStartSeconds + seekDelta
+                    let duration = getDuration()
+                    let clampedTime = max(0, min(duration, newTime))
+                    let targetMicroseconds = Int64(clampedTime * Double(AV_TIME_BASE))
+
+                    Task {
+                        await engine.seek(to: targetMicroseconds)
+                    }
                 }
             }
             isSeeking = false
