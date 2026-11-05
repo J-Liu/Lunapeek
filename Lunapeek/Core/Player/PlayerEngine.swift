@@ -420,7 +420,6 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
 
         onProgress?(currentSeconds, durationSeconds)
     }
-    }
 }
 
 // MARK: - Errors
