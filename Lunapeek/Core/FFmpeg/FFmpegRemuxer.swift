@@ -97,9 +97,8 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     // MARK: - C Callbacks (exposed to C)
 
     func handleRead(buf: UnsafeMutablePointer<UInt8>, size: Int) -> Int {
-        debugLog("🔄 handleRead: pos=\(ioContext.currentPosition), size=\(size)")
+        // High-frequency callback - no logging
         guard let readCallback = ioContext.readCallback else {
-            debugLog("🔄 handleRead: no readCallback")
             return -1
         }
 
@@ -108,7 +107,6 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         let actualSize = min(Int(size), Int(availableFromPos))
 
         guard actualSize > 0 else {
-            debugLog("🔄 handleRead: EOF (pos=\(ioContext.currentPosition), fileSize=\(ioContext.fileSize))")
             return 0  // EOF
         }
 
@@ -122,17 +120,15 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             }
 
             ioContext.currentPosition += Int64(data.count)
-            debugLog("🔄 handleRead: read \(data.count) bytes, newPos=\(ioContext.currentPosition)")
             return data.count
         } catch {
-            debugLog("🔄 handleRead error: \(error)")
             return -1
         }
     }
 
     func handleWrite(buf: UnsafePointer<UInt8>, size: Int) -> Int {
+        // High-frequency callback - no logging
         let data = Data(bytes: buf, count: size)
-        debugLog("🔄 handleWrite: \(size) bytes")
 
         ioContext.bufferLock.lock()
         ioContext.outputBuffer.append(data)
@@ -144,7 +140,6 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         ioContext.bufferLock.unlock()
 
         if let dataToSend = dataToSend {
-            debugLog("🔄 Flushing \(dataToSend.count) bytes")
             delegate?.remuxerDidOutputData(dataToSend)
         }
 
@@ -152,17 +147,16 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     }
 
     func handleSeek(offset: Int64, whence: Int) -> Int64 {
+        // High-frequency callback - minimal logging
         let SEEK_SET = 0
         let SEEK_CUR = 1
         let SEEK_END = 2
         let AVSEEK_SIZE = 0x10000
 
         if whence == AVSEEK_SIZE {
-            debugLog("🔄 handleSeek: AVSEEK_SIZE -> \(ioContext.fileSize)")
             return ioContext.fileSize
         }
 
-        let oldPos = ioContext.currentPosition
         switch whence {
         case SEEK_SET:
             ioContext.currentPosition = offset
@@ -171,11 +165,9 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         case SEEK_END:
             ioContext.currentPosition = ioContext.fileSize + offset
         default:
-            debugLog("🔄 handleSeek: unknown whence \(whence)")
             return -1
         }
 
-        debugLog("🔄 handleSeek: whence=\(whence), offset=\(offset), oldPos=\(oldPos) -> newPos=\(ioContext.currentPosition)")
         return ioContext.currentPosition
     }
 
@@ -359,7 +351,8 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             }
 
             packetCount += 1
-            if packetCount % 100 == 0 {
+            // Log progress every 500 packets to reduce logging frequency
+            if packetCount % 500 == 0 {
                 debugLog("🔄 Processed \(packetCount) packets")
             }
 

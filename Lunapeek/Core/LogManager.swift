@@ -69,7 +69,7 @@ final class LogManager: @unchecked Sendable {
 }
 
 nonisolated func debugLog(_ message: String) {
-    DispatchQueue.main.async {
-        LogManager.shared.log(message)
-    }
+    // Direct print without dispatch - logging from FFmpeg callbacks is high-frequency
+    // and dispatching to main queue causes memory exhaustion
+    print(message)
 }
