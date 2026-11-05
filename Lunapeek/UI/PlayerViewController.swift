@@ -1216,6 +1216,9 @@ final class PlayerViewController: UIViewController {
         let audioRenderer = LPAudioRenderer()
         lpAudioRenderer = audioRenderer
 
+        // Connect audio clock to video renderer for synchronization
+        videoRenderer.setAudioClock(audioRenderer.audioClock)
+
         // Connect renderers to engine
         engine.videoRenderer = { [weak self] frame in
             self?.lpVideoRenderer?.enqueue(frame)
@@ -1240,6 +1243,9 @@ final class PlayerViewController: UIViewController {
         }
         engine.audioRendererPause = { [weak self] in
             self?.lpAudioRenderer?.pause()
+        }
+        engine.videoRendererSetTime = { [weak self] time in
+            self?.lpVideoRenderer?.setVideoClockBase(time)
         }
 
         // Observe state changes

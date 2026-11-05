@@ -5,6 +5,7 @@
 
 import Foundation
 import CoreAudio
+import CoreMedia
 import FFmpegBridge
 
 /// Software audio decoder using FFmpeg libavcodec
@@ -147,7 +148,7 @@ public final class FFmpegAudioDecoder: LPAudioDecoderProtocol {
     }
 
     public func flush() {
-        guard let context = codecContext, let frame = frame else { return }
+        guard let context = codecContext else { return }
 
         // Use avcodec_flush_buffers to properly reset decoder state
         avcodec_flush_buffers(context)
@@ -221,11 +222,17 @@ public final class FFmpegAudioDecoder: LPAudioDecoderProtocol {
         let actualSamples = Int(converted)
         let actualSize = actualSamples * Int(outChannels) * 2
 
+        // Convert PTS to CMTime using timebase
+        let ptsSec = Double(frame.pointee.pts) * Double(timebase.num) / Double(timebase.den)
+        let durationSec = Double(frame.pointee.duration) * Double(timebase.num) / Double(timebase.den)
+        let pts = CMTime(seconds: ptsSec, preferredTimescale: 1000000000)
+        let duration = CMTime(seconds: durationSec, preferredTimescale: 1000000000)
+
         // Create audio frame
         return LPAudioFrame(
             data: Data(outBuffer.prefix(actualSize)),
-            pts: frame.pointee.pts,
-            duration: frame.pointee.duration,
+            pts: pts,
+            duration: duration,
             sampleRate: outSampleRate,
             channels: outChannels,
             format: outSampleFormat

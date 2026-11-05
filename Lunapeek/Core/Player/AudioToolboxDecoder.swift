@@ -6,6 +6,7 @@
 import Foundation
 import AudioToolbox
 import CoreAudio
+import CoreMedia
 import FFmpegBridge
 
 /// Hardware audio decoder using AudioToolbox (iOS Core Audio)
@@ -150,12 +151,17 @@ public final class AudioToolboxDecoder: LPAudioDecoderProtocol {
             let decodedSize = Int(ioOutputData.mBuffers.mDataByteSize)
             if let mData = ioOutputData.mBuffers.mData {
                 let decodedData = Data(bytes: mData, count: decodedSize)
-                let pts = packet.pointee.pts
+
+                // Convert PTS to CMTime using timebase
+                let ptsSec = Double(packet.pointee.pts) * Double(timebase.num) / Double(timebase.den)
+                let durationSec = Double(packet.pointee.duration) * Double(timebase.num) / Double(timebase.den)
+                let pts = CMTime(seconds: ptsSec, preferredTimescale: 1000000000)
+                let duration = CMTime(seconds: durationSec, preferredTimescale: 1000000000)
 
                 let frame = LPAudioFrame(
                     data: decodedData,
                     pts: pts,
-                    duration: packet.pointee.duration,
+                    duration: duration,
                     sampleRate: outputSampleRate,
                     channels: outputChannels,
                     format: AV_SAMPLE_FMT_S16  // Output is signed 16-bit PCM
