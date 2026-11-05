@@ -54,6 +54,9 @@ public final class FFmpegRemuxer: @unchecked Sendable {
     // Retained self pointer for C callbacks - must be released in cleanup
     private var retainedSelf: UnsafeMutableRawPointer?
 
+    // Duration in seconds
+    public private(set) var duration: Double = 0
+
     public init() {}
 
     /// Start remuxing from a file URL.
@@ -249,6 +252,15 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         }
         debugLog("🔄 Stream info found")
 
+        // Log input duration
+        let inputDuration = formatContext!.pointee.duration
+        if inputDuration > 0 {
+            duration = Double(inputDuration) / Double(AV_TIME_BASE)
+            debugLog("🔄 Input duration: \(duration) seconds (\(inputDuration) in AV_TIME_BASE)")
+        } else {
+            debugLog("🔄 Input duration: unknown (0)")
+        }
+
         // Create output
         try createOutputAndRemux()
     }
@@ -283,6 +295,15 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         outputContext!.pointee.pb = ioCtx
         outputContext!.pointee.flags |= AVFMT_FLAG_CUSTOM_IO
 
+        // Copy duration from input to output
+        // This allows AVPlayer to show correct progress before file is fully remuxed
+        let inputDuration = inputContext.pointee.duration
+        if inputDuration > 0 {
+            outputContext!.pointee.duration = inputDuration
+            let durationSec = Double(inputDuration) / Double(AV_TIME_BASE)
+            debugLog("🔄 Output duration set: \(durationSec) seconds")
+        }
+
         // Setup streams
         guard setupStreams() else {
             debugLog("🔄 setupStreams failed")
@@ -298,7 +319,8 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 
         // Use fragmented MP4 for streaming - allows writing without seeking
         // frag_discont allows discontinuous fragments for B-frames
-        av_dict_set(&options, "movflags", "frag_discont+empty_moov+default_base_moof", 0)
+        // Remove empty_moov to include duration in header for AVPlayer
+        av_dict_set(&options, "movflags", "frag_discont+default_base_moof", 0)
 
         // Fragment every 2 seconds for smooth streaming
         av_dict_set(&options, "frag_duration", "2000000", 0)  // 2 seconds in microseconds
@@ -442,6 +464,18 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             // Copy codec parameters
             guard avcodec_parameters_copy(outStream!.pointee.codecpar, codecParams) >= 0 else {
                 return false
+            }
+
+            // Copy duration from input stream to output stream
+            // This helps AVPlayer show correct progress
+            let inDuration = inStream.pointee.duration
+            if inDuration > 0 {
+                outStream!.pointee.duration = inDuration
+                // Also set the overall format duration from the longest stream
+                let formatDuration = outputContext.pointee.duration
+                if inDuration > formatDuration {
+                    outputContext.pointee.duration = inDuration
+                }
             }
 
             streamMapping[i] = Int(outStream!.pointee.index)

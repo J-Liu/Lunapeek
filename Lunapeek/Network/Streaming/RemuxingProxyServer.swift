@@ -31,6 +31,9 @@ final class RemuxingProxyServer: @unchecked Sendable {
     private var remuxCompleted: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: false)
     private var remuxError: OSAllocatedUnfairLock<Error?> = OSAllocatedUnfairLock(initialState: nil)
 
+    // Duration in seconds (AV_TIME_BASE units converted)
+    public var duration: Double = 0
+
     var localURL: URL? {
         let port = _port.withLock { $0 }
         guard port > 0 else { return nil }
@@ -180,6 +183,16 @@ final class RemuxingProxyServer: @unchecked Sendable {
             readCallback: reader,
             delegate: remuxerDelegate!
         )
+
+        // Wait a short time for the remuxer to read the duration
+        // The duration is set during avformat_find_stream_info
+        try? await Task.sleep(nanoseconds: 500_000_000)  // 500ms
+
+        // Get duration from remuxer
+        if let remuxer = remuxer {
+            duration = remuxer.duration
+            debugLog("🔄 Remuxer duration: \(duration) seconds")
+        }
     }
 
     private func appendRemuxedData(_ data: Data) {
