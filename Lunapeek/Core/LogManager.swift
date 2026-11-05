@@ -62,7 +62,7 @@ final class LogManager: @unchecked Sendable {
 }
 
 nonisolated func debugLog(_ message: String) {
-    MainActor.assumeIsolated {
+    Task { @MainActor in
         LogManager.shared.log(message)
     }
 }
