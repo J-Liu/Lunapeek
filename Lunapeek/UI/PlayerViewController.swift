@@ -356,7 +356,11 @@ final class PlayerViewController: UIViewController {
         progressBar.maximumValue = 100
         progressBar.value = 0
         progressBar.tintColor = .systemBlue
-        progressBar.addTarget(self, action: #selector(progressChanged), for: .valueChanged)
+        // Only update UI during drag, actual seek happens on release
+        progressBar.addTarget(self, action: #selector(progressDragChanged), for: .valueChanged)
+        // Perform seek when user releases the slider
+        progressBar.addTarget(self, action: #selector(progressDragEnded), for: .touchUpInside)
+        progressBar.addTarget(self, action: #selector(progressDragEnded), for: .touchUpOutside)
 
         // Add tap gesture for jumping to position (iOS 18+)
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(progressBarTapped(_:)))
@@ -814,7 +818,7 @@ final class PlayerViewController: UIViewController {
         // Handle AVQueuePlayer
         guard let player = avQueuePlayer else { return }
         let currentTime = player.currentTime().seconds
-        let duration = player.currentItem?.duration.seconds ?? 0
+        let duration = getDuration()
         let newTime = min(duration, currentTime + 10)
         let time = CMTime(seconds: newTime, preferredTimescale: 600)
         player.seek(to: time)
@@ -1285,6 +1289,12 @@ final class PlayerViewController: UIViewController {
         engine.audioRenderer = { [weak self] frame in
             self?.lpAudioRenderer?.enqueue(frame)
         }
+        engine.videoRendererFlush = { [weak self] in
+            self?.lpVideoRenderer?.flush()
+        }
+        engine.audioRendererFlush = { [weak self] in
+            self?.lpAudioRenderer?.flush()
+        }
 
         // Observe state changes
         engine.onStateChanged = { [weak self] state in
@@ -1321,6 +1331,7 @@ final class PlayerViewController: UIViewController {
     }
 
     private func handlePlayerStateChanged(_ state: LPPlayerState) {
+        debugLog("🎬 PlayerViewController: handlePlayerStateChanged: \(state)")
         switch state {
         case .playing:
             isPaused = false
@@ -1333,10 +1344,13 @@ final class PlayerViewController: UIViewController {
                 .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
             centerPlayButton.setImage(image, for: .normal)
         case .ended:
+            debugLog("🎬 PlayerViewController: state is .ended, checking playlist")
             // Handle playback end - go to next or close
             if let playlist = playlist, currentIndex + 1 < playlist.count {
                 // Play next
+                debugLog("🎬 PlayerViewController: has next item in playlist")
             } else {
+                debugLog("🎬 PlayerViewController: no next item, calling closeTapped()")
                 closeTapped()
             }
         case .error(let message):
@@ -1670,7 +1684,7 @@ final class PlayerViewController: UIViewController {
                 let newTime = seekStartSeconds + seekDelta
 
                 // Clamp to valid range
-                let duration = avQueuePlayer?.currentItem?.duration.seconds ?? 0
+                let duration = getDuration()
                 let clampedTime = max(0, min(duration, newTime))
 
                 showSeekIndicator(seconds: clampedTime)
@@ -1733,7 +1747,7 @@ final class PlayerViewController: UIViewController {
         label.textColor = .white
         label.font = .monospacedDigitSystemFont(ofSize: 18, weight: .medium)
 
-        let duration = avQueuePlayer?.currentItem?.duration.seconds ?? 0
+        let duration = getDuration()
         let currentStr = formatTime(seconds)
         let durationStr = formatTime(duration)
         label.text = "\(currentStr) / \(durationStr)"
@@ -1916,7 +1930,32 @@ final class PlayerViewController: UIViewController {
         playButton.setImage(image, for: .normal)
     }
 
-    @objc private func progressChanged() {
+    @objc private func progressDragChanged() {
+        // Only update UI during drag, don't seek yet
+        resetControlsHideTimer()
+
+        // Handle LPPlayerEngine
+        if let engine = lpPlayerEngine {
+            let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
+            guard durationSeconds > 0 else { return }
+
+            let targetTime = durationSeconds * Double(progressBar.value) / 100
+            showSeekIndicator(seconds: targetTime)
+            return
+        }
+
+        // Handle AVQueuePlayer
+        guard avQueuePlayer != nil else { return }
+
+        let duration = getDuration()
+        guard duration > 0 else { return }
+
+        let targetTime = duration * Double(progressBar.value) / 100
+        showSeekIndicator(seconds: targetTime)
+    }
+
+    @objc private func progressDragEnded() {
+        // Perform actual seek when user releases the slider
         resetControlsHideTimer()
 
         // Handle LPPlayerEngine
@@ -1938,7 +1977,7 @@ final class PlayerViewController: UIViewController {
         // Handle AVQueuePlayer
         guard let player = avQueuePlayer else { return }
 
-        let duration = player.currentItem?.duration.seconds ?? 0
+        let duration = getDuration()
         guard duration > 0 else { return }
 
         let targetTime = duration * Double(progressBar.value) / 100
@@ -1978,7 +2017,7 @@ final class PlayerViewController: UIViewController {
         // Handle AVQueuePlayer
         guard let player = avQueuePlayer else { return }
 
-        let duration = player.currentItem?.duration.seconds ?? 0
+        let duration = getDuration()
         guard duration > 0 else { return }
 
         let targetTime = duration * clampedPercentage
@@ -1992,11 +2031,19 @@ final class PlayerViewController: UIViewController {
         showSeekIndicator(seconds: targetTime)
     }
 
+    /// Get duration - use remuxed duration if available, otherwise use AVPlayer's duration
+    private func getDuration() -> Double {
+        if let proxy = remuxingProxyServer, proxy.duration > 0 {
+            return proxy.duration
+        }
+        return avQueuePlayer?.currentItem?.duration.seconds ?? 0
+    }
+
     private func updateProgress() {
         guard let player = avQueuePlayer else { return }
 
         let currentTime = player.currentTime().seconds
-        let duration = player.currentItem?.duration.seconds ?? 0
+        let duration = getDuration()
 
         if duration > 0 {
             let progress = (currentTime / duration) * 100

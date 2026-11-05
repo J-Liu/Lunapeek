@@ -30,6 +30,7 @@ public final class LPVideoRenderer {
     public func enqueue(_ frame: LPVideoFrame) {
         guard let pixelBuffer = frame.pixelBuffer else {
             // Software-decoded frames need conversion (not yet supported)
+            debugLog("⚠️ VideoRenderer: frame has no pixelBuffer")
             return
         }
 
@@ -43,18 +44,21 @@ public final class LPVideoRenderer {
             formatDescriptionOut: &formatDesc
         )
 
-        guard status == noErr, let formatDesc = formatDesc else { return }
+        guard status == noErr, let formatDesc = formatDesc else {
+            debugLog("❌ VideoRenderer: failed to create format description, status=\(status)")
+            return
+        }
 
-        // Create timing info
+        // Create timing info - pts is in milliseconds, convert to CMTime
         let pts = CMTime(
             value: frame.pts,
-            timescale: 1,
+            timescale: 1000,  // milliseconds
             flags: .valid,
             epoch: 0
         )
         let duration = CMTime(
             value: frame.duration,
-            timescale: 1,
+            timescale: 1000,  // milliseconds
             flags: .valid,
             epoch: 0
         )
@@ -77,10 +81,14 @@ public final class LPVideoRenderer {
             sampleBufferOut: &sampleBuffer
         )
 
-        guard sampleStatus == noErr, let sampleBuffer = sampleBuffer else { return }
+        guard sampleStatus == noErr, let sampleBuffer = sampleBuffer else {
+            debugLog("❌ VideoRenderer: failed to create sample buffer, status=\(sampleStatus)")
+            return
+        }
 
         // Enqueue for display
         displayLayer.sampleBufferRenderer.enqueue(sampleBuffer)
+        debugLog("✅ VideoRenderer: enqueued frame, pts=\(frame.pts)")
         isConfigured = true
     }
 
