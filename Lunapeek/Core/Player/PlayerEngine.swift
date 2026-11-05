@@ -201,8 +201,11 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         guard let demuxer = demuxer else { return }
 
         let streams = demuxer.getStreams()
+        debugLog("📋 Found \(streams.count) streams")
 
         for stream in streams {
+            debugLog("📋 Stream \(stream.index): type=\(stream.type), codec=\(stream.codecId.rawValue)")
+
             if stream.isVideo && videoStreamIndex == nil {
                 videoStreamIndex = stream.index
                 videoTimebase = stream.timebase
@@ -331,14 +334,22 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     public func demuxerDidReadPacket(_ packet: UnsafeMutablePointer<AVPacket>, streamIndex: Int) {
         // Always process packets even when paused - decoder needs data
         let streamIdx = Int(packet.pointee.stream_index)
-        debugLog("📦 Packet received: stream=\(streamIdx), pts=\(packet.pointee.pts), isPlaying=\(isPlaying)")
+
+        // Only log every 100 packets to reduce noise
+        if streamIdx == videoStreamIndex || streamIdx == audioStreamIndex {
+            debugLog("📦 Packet: stream=\(streamIdx), pts=\(packet.pointee.pts), videoIdx=\(videoStreamIndex ?? -1), audioIdx=\(audioStreamIndex ?? -1)")
+        }
 
         if streamIdx == videoStreamIndex {
             let decoded = videoDecoder?.decode(packet: packet) ?? false
-            debugLog("📺 Video decode result: \(decoded)")
+            if !decoded {
+                debugLog("📺 Video decode failed for stream \(streamIdx)")
+            }
         } else if streamIdx == audioStreamIndex {
             let decoded = audioDecoder?.decode(packet: packet) ?? false
-            debugLog("🔊 Audio decode result: \(decoded)")
+            if !decoded {
+                debugLog("🔊 Audio decode failed for stream \(streamIdx)")
+            }
         }
     }
 
