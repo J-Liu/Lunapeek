@@ -57,9 +57,9 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     private var isSeeking = false
     private let stateLock = NSLock()
 
-    // Frame statistics
+    // Frame statistics (duration in AV_TIME_BASE microseconds)
     public private(set) var currentTime: Int64 = 0
-    public private(set) var duration: Int64 = 0
+    public private(set) var duration: Int64 = 0  // in microseconds
 
     public init() {}
 
@@ -201,6 +201,10 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     private func setupStreams() {
         guard let demuxer = demuxer else { return }
 
+        // Get format duration in microseconds (AV_TIME_BASE)
+        duration = demuxer.getDuration()
+        debugLog("📋 Format duration: \(duration) microseconds (\(Double(duration) / Double(AV_TIME_BASE)) seconds)")
+
         let streams = demuxer.getStreams()
         debugLog("📋 Found \(streams.count) streams")
 
@@ -210,7 +214,7 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
             if stream.isVideo && videoStreamIndex == nil {
                 videoStreamIndex = stream.index
                 videoTimebase = stream.timebase
-                duration = max(duration, stream.duration)
+                debugLog("📺 Video stream: index=\(stream.index), timebase=\(stream.timebase.num)/\(stream.timebase.den)")
 
                 // Check if codec needs software decoding (10-bit HEVC, VP9, etc.)
                 let needsSoftwareDecoding = Self.needsSoftwareDecoding(
@@ -261,7 +265,6 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
             } else if stream.isAudio && audioStreamIndex == nil {
                 audioStreamIndex = stream.index
                 audioTimebase = stream.timebase
-                duration = max(duration, stream.duration)
 
                 // Check if codec needs software decoding
                 let needsSoftwareAudio = Self.needsSoftwareAudioDecoding(codecId: stream.codecId)
@@ -402,11 +405,21 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     }
 
     private func notifyProgress() {
-        guard duration > 0 else { return }
-        // Convert PTS to seconds using timebase
-        let currentSeconds = Double(currentTime) * Double(videoTimebase.num) / Double(videoTimebase.den)
-        let durationSeconds = Double(duration) * Double(videoTimebase.num) / Double(videoTimebase.den)
+        guard duration > 0 else {
+            debugLog("⏱️ notifyProgress: duration is \(duration), skipping")
+            return
+        }
+
+        // Convert currentTime from stream timebase to AV_TIME_BASE (microseconds)
+        let avTimebaseQ = AVRational(num: 1, den: Int32(AV_TIME_BASE))
+        let currentTimeInAvTimebase = av_rescale_q(currentTime, videoTimebase, avTimebaseQ)
+
+        // Convert to seconds
+        let currentSeconds = Double(currentTimeInAvTimebase) / Double(AV_TIME_BASE)
+        let durationSeconds = Double(duration) / Double(AV_TIME_BASE)
+
         onProgress?(currentSeconds, durationSeconds)
+    }
     }
 }
 

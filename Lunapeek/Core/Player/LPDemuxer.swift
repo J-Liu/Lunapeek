@@ -138,6 +138,12 @@ public final class LPDemuxer {
         return streams.filter { $0.type == type }
     }
 
+    /// Get duration in AV_TIME_BASE units (microseconds)
+    public func getDuration() -> Int64 {
+        guard let formatCtx = formatContext else { return 0 }
+        return formatCtx.pointee.duration
+    }
+
     /// Start reading packets
     public func start() {
         guard let formatCtx = formatContext else { return }
