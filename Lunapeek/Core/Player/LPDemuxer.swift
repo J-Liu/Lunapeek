@@ -41,6 +41,7 @@ public final class LPDemuxer {
     private var customIO: CustomIOContext?
     private var streams: [LPStreamInfo] = []
     private var isRunning = false
+    private var isReading = false  // Track if read loop is active
     private let queue = DispatchQueue(label: "com.lunapeek.demuxer", qos: .userInitiated)
     private weak var delegate: LPDemuxerDelegate?
 
@@ -158,6 +159,12 @@ public final class LPDemuxer {
     /// Stop reading
     public func stop() {
         isRunning = false
+        // Wait for read loop to finish (max 100ms)
+        var waitCount = 0
+        while isReading && waitCount < 10 {
+            Thread.sleep(forTimeInterval: 0.01)
+            waitCount += 1
+        }
     }
 
     /// Seek to timestamp
@@ -261,6 +268,9 @@ public final class LPDemuxer {
     }
 
     private func readPackets(_ formatCtx: UnsafeMutablePointer<AVFormatContext>) {
+        isReading = true
+        defer { isReading = false }
+
         var packet = AVPacket()
         var packetCount = 0
 

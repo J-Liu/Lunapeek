@@ -20,6 +20,7 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
     private var lastWidth: Int32 = 0
     private var lastHeight: Int32 = 0
     private var lastFormat: AVPixelFormat = AV_PIX_FMT_NONE
+    private let lock = NSLock()
 
     public init() {}
 
@@ -67,14 +68,15 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
     }
 
     public func decode(packet: UnsafeMutablePointer<AVPacket>) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
         guard let context = codecContext, let frame = frame else {
-            debugLog("❌ FFmpegSoft: No context or frame")
             return false
         }
 
         // Check if decoder is still valid
         guard context.pointee.codec != nil else {
-            debugLog("❌ FFmpegSoft: No codec")
             return false
         }
 
@@ -110,8 +112,6 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
             if let outputFrame = convertFrame(frame) {
                 debugLog("✅ FFmpegSoft: Frame decoded, pts=\(outputFrame.pts)")
                 onFrameDecoded?(outputFrame)
-            } else {
-                debugLog("❌ FFmpegSoft: Frame conversion failed")
             }
 
             av_frame_unref(frame)
@@ -121,22 +121,35 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
     }
 
     public func flush() {
+        lock.lock()
+        defer { lock.unlock() }
+
         guard let context = codecContext else { return }
 
         // Send flush packet
         avcodec_send_packet(context, nil)
 
-        // Get remaining frames
+        // Get remaining frames but don't deliver (we're seeking)
         guard let frame = frame else { return }
         while true {
             let ret = avcodec_receive_frame(context, frame)
             if ret < 0 { break }
-
-            if let outputFrame = convertFrame(frame) {
-                onFrameDecoded?(outputFrame)
-            }
             av_frame_unref(frame)
         }
+
+        // Reset swsContext to force recreation after seek
+        if let swsContext = swsContext {
+            sws_freeContext(swsContext)
+            self.swsContext = nil
+        }
+        if let dstFrame = dstFrame {
+            var dstPtr: UnsafeMutablePointer<AVFrame>? = dstFrame
+            av_frame_free(&dstPtr)
+            self.dstFrame = nil
+        }
+        lastWidth = 0
+        lastHeight = 0
+        lastFormat = AV_PIX_FMT_NONE
     }
 
     public func close() {
