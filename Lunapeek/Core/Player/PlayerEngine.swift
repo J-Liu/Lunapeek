@@ -328,8 +328,7 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     // MARK: - LPDemuxerDelegate
 
     public func demuxerDidReadPacket(_ packet: UnsafeMutablePointer<AVPacket>, streamIndex: Int) {
-        guard isPlaying else { return }
-
+        // Always process packets even when paused - decoder needs data
         let streamIdx = Int(packet.pointee.stream_index)
 
         if streamIdx == videoStreamIndex {
