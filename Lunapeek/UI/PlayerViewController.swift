@@ -1269,6 +1269,13 @@ final class PlayerViewController: UIViewController {
             }
         }
 
+        // Observe progress updates
+        engine.onProgress = { [weak self] currentSeconds, durationSeconds in
+            DispatchQueue.main.async {
+                self?.updateProgressFromEngine(current: currentSeconds, duration: durationSeconds)
+            }
+        }
+
         do {
             // Open the file
             try await engine.open(url: url)
@@ -1937,6 +1944,18 @@ final class PlayerViewController: UIViewController {
             // Update now playing info
             updateNowPlayingInfo()
         }
+    }
+
+    /// Update progress from LPPlayerEngine
+    private func updateProgressFromEngine(current: Double, duration: Double) {
+        guard duration > 0 else { return }
+
+        let progress = (current / duration) * 100
+        progressBar.value = Float(progress)
+
+        let currentStr = formatTime(current)
+        let durationStr = formatTime(duration)
+        timeLabel.text = "\(currentStr) / \(durationStr)"
     }
 
     private func updatePlayButton() {

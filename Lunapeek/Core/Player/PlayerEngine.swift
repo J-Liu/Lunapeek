@@ -35,6 +35,7 @@ public enum LPPlayerState: Equatable {
 public final class LPPlayerEngine: LPDemuxerDelegate {
     public private(set) var state: LPPlayerState = .idle
     public var onStateChanged: ((LPPlayerState) -> Void)?
+    public var onProgress: ((Double, Double) -> Void)? // currentTime, duration in seconds
 
     // Core components
     private var demuxer: LPDemuxer?
@@ -388,13 +389,24 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         // Only render when playing (not paused)
         guard isPlaying else { return }
         videoRenderer?(frame)
+
+        // Update current time and notify progress
         currentTime = frame.pts
+        notifyProgress()
     }
 
     private func handleAudioFrame(_ frame: LPAudioFrame) {
         // Only render when playing (not paused)
         guard isPlaying else { return }
         audioRenderer?(frame)
+    }
+
+    private func notifyProgress() {
+        guard duration > 0 else { return }
+        // Convert PTS to seconds using timebase
+        let currentSeconds = Double(currentTime) * Double(videoTimebase.num) / Double(videoTimebase.den)
+        let durationSeconds = Double(duration) * Double(videoTimebase.num) / Double(videoTimebase.den)
+        onProgress?(currentSeconds, durationSeconds)
     }
 }
 
