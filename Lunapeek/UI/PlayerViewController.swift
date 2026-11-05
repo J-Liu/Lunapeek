@@ -789,7 +789,7 @@ final class PlayerViewController: UIViewController {
             let currentSeconds = Double(engine.currentTime) / Double(AV_TIME_BASE)
             let newSeconds = max(0, currentSeconds - 10)
             let newMicroseconds = Int64(newSeconds * Double(AV_TIME_BASE))
-            Task {
+            Task.detached(priority: .userInitiated) {
                 await engine.seek(to: newMicroseconds)
             }
             return
@@ -812,7 +812,7 @@ final class PlayerViewController: UIViewController {
             let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
             let newSeconds = min(durationSeconds, currentSeconds + 10)
             let newMicroseconds = Int64(newSeconds * Double(AV_TIME_BASE))
-            Task {
+            Task.detached(priority: .userInitiated) {
                 await engine.seek(to: newMicroseconds)
             }
             return
@@ -1689,7 +1689,8 @@ final class PlayerViewController: UIViewController {
                     let clampedTime = max(0, min(duration, newTime))
                     let targetMicroseconds = Int64(clampedTime * Double(AV_TIME_BASE))
 
-                    Task {
+                    // Run seek on background thread to avoid blocking main thread
+                    Task.detached(priority: .userInitiated) {
                         await engine.seek(to: targetMicroseconds)
                     }
                 }
@@ -1946,7 +1947,7 @@ final class PlayerViewController: UIViewController {
             let targetTime = durationSeconds * Double(progressBar.value) / 100
             let targetMicroseconds = Int64(targetTime * Double(AV_TIME_BASE))
 
-            Task {
+            Task.detached(priority: .userInitiated) {
                 await engine.seek(to: targetMicroseconds)
             }
 
@@ -1983,7 +1984,7 @@ final class PlayerViewController: UIViewController {
             let targetTime = durationSeconds * clampedPercentage
             let targetMicroseconds = Int64(targetTime * Double(AV_TIME_BASE))
 
-            Task {
+            Task.detached(priority: .userInitiated) {
                 await engine.seek(to: targetMicroseconds)
             }
 
