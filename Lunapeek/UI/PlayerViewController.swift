@@ -10,7 +10,9 @@ import MediaPlayer
 
 final class PlayerViewController: UIViewController {
     private let url: URL
-    private var playerEngine: PlayerEngine?
+    private var lpPlayerEngine: LPPlayerEngine?
+    private var lpVideoRenderer: LPVideoRenderer?
+    private var lpAudioRenderer: LPAudioRenderer?
     private var avQueuePlayer: AVQueuePlayer?
     private var avPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
@@ -92,7 +94,7 @@ final class PlayerViewController: UIViewController {
         gestureIndicatorTimer?.invalidate()
         seekIndicatorTimer?.invalidate()
         // Clear log handler to prevent callbacks to deallocated self
-        LogManager.shared.handler = nil
+        LogManager.shared.setHandler(nil)
         // Remove observer first (safe even if player is gone)
         if let observer = timeObserver {
             avQueuePlayer?.removeTimeObserver(observer)
@@ -100,6 +102,11 @@ final class PlayerViewController: UIViewController {
         }
         // Stop proxy server
         proxyServer?.stop()
+        remuxingProxyServer?.stop()
+        // Stop LPPlayerEngine
+        lpPlayerEngine?.stop()
+        lpVideoRenderer = nil
+        lpAudioRenderer = nil
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
     }
@@ -108,7 +115,11 @@ final class PlayerViewController: UIViewController {
         super.viewDidLoad()
 
         LogManager.shared.clear()
-        LogManager.shared.handler = { [weak self] entry in
+        // Set up log file for crash debugging
+        let logURL = FileManager.default.temporaryDirectory.appendingPathComponent("lunapeek_debug.log")
+        LogManager.shared.setLogFile(logURL)
+        debugLog("📋 Log file: \(logURL.path)")
+        LogManager.shared.setHandler { [weak self] entry in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.logEntries.append(entry)
@@ -862,8 +873,8 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Handle PlayerEngine
-        guard let engine = playerEngine else { return }
+        // Handle LPPlayerEngine
+        guard let engine = lpPlayerEngine else { return }
 
         switch engine.state {
         case .ready, .paused:
@@ -922,12 +933,12 @@ final class PlayerViewController: UIViewController {
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
 
         // Stop and remove PlayerEngine if present
-        if let engine = playerEngine {
-            engine.videoRendererLayer?.removeFromSuperlayer()
-            Task {
-                await engine.stop()
-            }
-            playerEngine = nil
+        if let engine = lpPlayerEngine {
+            engine.stop()
+            lpVideoRenderer?.layer.removeFromSuperlayer()
+            lpPlayerEngine = nil
+            lpVideoRenderer = nil
+            lpAudioRenderer = nil
         }
 
         // Remove old player layer
@@ -1047,7 +1058,7 @@ final class PlayerViewController: UIViewController {
 
         // Update video layer
         avPlayerLayer?.frame = videoView.bounds
-        playerEngine?.videoRendererLayer?.frame = videoView.bounds
+        lpVideoRenderer?.layer.frame = videoView.bounds
     }
 
     private func exitFullscreen() {
@@ -1062,7 +1073,7 @@ final class PlayerViewController: UIViewController {
 
         // Update video layer
         avPlayerLayer?.frame = videoView.bounds
-        playerEngine?.videoRendererLayer?.frame = videoView.bounds
+        lpVideoRenderer?.layer.frame = videoView.bounds
     }
 
     private func setupPlayer() {
@@ -1076,55 +1087,37 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Check if file needs remuxing
+        // Check if the file needs remuxing based on container format
         if DemuxerFactory.needsRemux(url) {
-            log("Format needs remuxing, starting RemuxingProxyServer")
+            // Need to probe the file to check if codecs are supported by AVPlayer
             Task {
-                await setupRemuxingPlayer()
+                let codecResult = await CodecSupportChecker.checkFile(url)
+
+                if codecResult.needsFFmpeg {
+                    // Use LPPlayerEngine with FFmpeg decoding
+                    if let reason = codecResult.reason {
+                        log("Using FFmpeg decoding: \(reason)")
+                    }
+                    await setupLPPlayer()
+                } else {
+                    // Codecs are supported - use remuxing to AVPlayer
+                    log("Codecs supported, using remuxing to AVPlayer")
+                    await setupRemuxingPlayer()
+                }
             }
             return
         }
 
-        // For all files, use AVPlayer (more stable for local files)
+        // Native formats (MP4/MOV) - use AVPlayer directly
         if url.scheme == "http" || url.scheme == "https" || url.isFileURL {
             log("Using AVPlayer")
             setupAVPlayer()
             return
         }
 
-        // Other protocols - use custom PlayerEngine (not commonly used)
-        let demuxer = DemuxerFactory.createDemuxer(for: url)
-        log("Demuxer: \(type(of: demuxer))")
-
-        let videoDecoder = VideoToolboxDecoderPlugin()
-        let audioDecoder = AudioToolboxDecoderPlugin()
-        let videoRenderer = VideoRenderer()
-        let audioRenderer = AudioRenderer()
-
-        playerEngine = PlayerEngine(
-            demuxer: demuxer,
-            videoDecoder: videoDecoder,
-            audioDecoder: audioDecoder,
-            videoRenderer: videoRenderer,
-            audioRenderer: audioRenderer
-        )
-
-        videoView.layer.addSublayer(videoRenderer.layer)
-        videoRenderer.layer.frame = videoView.bounds
-
-        Task {
-            do {
-                log("Loading asset...")
-                try await playerEngine?.load(url: url)
-                log("✅ Loaded successfully")
-                activateAudioSession()
-                playerEngine?.play()
-                setPlayButtonIcon(isPlaying: true)
-            } catch {
-                log("❌ Error: \(error)")
-                showError(error)
-            }
-        }
+        // Network files (SMB/SFTP) that don't need remuxing
+        log("Using AVPlayer for network file")
+        setupAVPlayer()
     }
 
     private func setupAVPlayer() {
@@ -1155,7 +1148,7 @@ final class PlayerViewController: UIViewController {
         // Setup Picture in Picture (only if exit behavior is .pip)
         if Settings.shared.exitBehavior == .pip {
             if AVPictureInPictureController.isPictureInPictureSupported() {
-                pipController = try? AVPictureInPictureController(playerLayer: playerLayer)
+                pipController = AVPictureInPictureController(playerLayer: playerLayer)
                 pipController?.delegate = self
             }
         }
@@ -1200,8 +1193,9 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Create reader closure
-        let reader: (Int64, Int) async throws -> Data = { offset, length in
+        // Create synchronous reader closure
+        let reader: (Int64, Int) throws -> Data = { [weak self] offset, length in
+            guard let self = self else { throw NSError(domain: "Cancelled", code: -1) }
             let fileHandle = try FileHandle(forReadingFrom: self.url)
             defer { try? fileHandle.close() }
             try fileHandle.seek(toOffset: UInt64(offset))
@@ -1235,6 +1229,80 @@ final class PlayerViewController: UIViewController {
         }
     }
 
+    private func setupLPPlayer() async {
+        log("🎬 Setting up LPPlayerEngine for: \(url.lastPathComponent)")
+
+        // Create player engine
+        let engine = LPPlayerEngine()
+        lpPlayerEngine = engine
+
+        // Create video renderer
+        let videoRenderer = LPVideoRenderer()
+        lpVideoRenderer = videoRenderer
+
+        // Add video renderer layer to view
+        videoRenderer.layer.frame = videoView.bounds
+        videoView.layer.addSublayer(videoRenderer.layer)
+
+        // Create audio renderer
+        let audioRenderer = LPAudioRenderer()
+        lpAudioRenderer = audioRenderer
+
+        // Connect renderers to engine
+        engine.videoRenderer = { [weak self] frame in
+            self?.lpVideoRenderer?.enqueue(frame)
+        }
+        engine.audioRenderer = { [weak self] frame in
+            self?.lpAudioRenderer?.enqueue(frame)
+        }
+
+        // Observe state changes
+        engine.onStateChanged = { [weak self] state in
+            DispatchQueue.main.async {
+                self?.handlePlayerStateChanged(state)
+            }
+        }
+
+        do {
+            // Open the file
+            try await engine.open(url: url)
+
+            // Start playback
+            engine.play()
+
+            log("✅ LPPlayerEngine started")
+        } catch {
+            log("❌ LPPlayerEngine failed: \(error)")
+            showError(error)
+        }
+    }
+
+    private func handlePlayerStateChanged(_ state: LPPlayerState) {
+        switch state {
+        case .playing:
+            isPaused = false
+            let image = UIImage(systemName: "pause.fill")?
+                .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
+            centerPlayButton.setImage(image, for: .normal)
+        case .paused:
+            isPaused = true
+            let image = UIImage(systemName: "play.fill")?
+                .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
+            centerPlayButton.setImage(image, for: .normal)
+        case .ended:
+            // Handle playback end - go to next or close
+            if let playlist = playlist, currentIndex + 1 < playlist.count {
+                // Play next
+            } else {
+                closeTapped()
+            }
+        case .error(let message):
+            showError(NSError(domain: "PlayerError", code: -1, userInfo: [NSLocalizedDescriptionKey: message]))
+        default:
+            break
+        }
+    }
+
     private func setupAVPlayerWithURL(_ playURL: URL) async {
         // Create player items
         var items: [AVPlayerItem] = []
@@ -1256,7 +1324,7 @@ final class PlayerViewController: UIViewController {
         // Setup PiP if needed
         if Settings.shared.exitBehavior == .pip {
             if AVPictureInPictureController.isPictureInPictureSupported() {
-                pipController = try? AVPictureInPictureController(playerLayer: playerLayer)
+                pipController = AVPictureInPictureController(playerLayer: playerLayer)
                 pipController?.delegate = self
             }
         }
@@ -1453,7 +1521,7 @@ final class PlayerViewController: UIViewController {
         log("📝 NowPlaying: \(title), rate=\(playbackRate), time=\(currentTime)/\(duration)")
 
         let nowPlayingInfoCenter = MPNowPlayingInfoCenter.default()
-        var info: [String: Any] = [
+        let info: [String: Any] = [
             MPMediaItemPropertyTitle: title,
             MPNowPlayingInfoPropertyPlaybackRate: playbackRate,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
@@ -1752,7 +1820,7 @@ final class PlayerViewController: UIViewController {
         deactivateAudioSession()
 
         Task { [weak self] in
-            await self?.playerEngine?.stop()
+            await self?.lpPlayerEngine?.stop()
             await MainActor.run {
                 self?.dismiss(animated: true)
             }
@@ -1780,8 +1848,8 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Handle PlayerEngine
-        guard let engine = playerEngine else { return }
+        // Handle LPPlayerEngine
+        guard let engine = lpPlayerEngine else { return }
 
         switch engine.state {
         case .ready, .paused:
@@ -1869,7 +1937,7 @@ final class PlayerViewController: UIViewController {
         let isPlaying: Bool
         if let player = avQueuePlayer {
             isPlaying = player.timeControlStatus == .playing
-        } else if playerEngine?.state == .playing {
+        } else if lpPlayerEngine?.state == .playing {
             isPlaying = true
         } else {
             isPlaying = false
@@ -1919,7 +1987,7 @@ final class PlayerViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        playerEngine?.videoRendererLayer?.frame = videoView.bounds
+        lpVideoRenderer?.layer.frame = videoView.bounds
         avPlayerLayer?.frame = videoView.bounds
     }
 }
