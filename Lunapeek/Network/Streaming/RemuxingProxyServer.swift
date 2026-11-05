@@ -58,10 +58,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
         self.dataReader = reader
         self.logHandler = logHandler
 
-        // Start remuxer
-        await startRemuxer()
-
-        // Start HTTP server
+        // Start HTTP server FIRST, then remuxer
         let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
 
@@ -91,11 +88,23 @@ final class RemuxingProxyServer: @unchecked Sendable {
         listener?.start(queue: queue)
 
         // Wait for server to be ready
+        debugLog("🔄 Waiting for server to be ready...")
+        var serverWaitAttempts = 0
         while true {
             let currentPort = _port.withLock { $0 }
-            if currentPort > 0 { break }
+            if currentPort > 0 {
+                debugLog("🔄 Server ready on port \(currentPort)")
+                break
+            }
+            serverWaitAttempts += 1
+            if serverWaitAttempts > 100 {
+                throw NSError(domain: "ServerError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Server failed to start"])
+            }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
+
+        // Start remuxer AFTER server is ready
+        await startRemuxer()
 
         // Wait for remuxer to generate initial data (at least 50KB)
         // This ensures AVPlayer gets data immediately on first request
@@ -174,10 +183,12 @@ final class RemuxingProxyServer: @unchecked Sendable {
     }
 
     private func appendRemuxedData(_ data: Data) {
-        let oldSize = remuxedData.withLock { $0.count }
         remuxedData.withLock { $0.append(data) }
-        let newSize = remuxedData.withLock { $0.count }
-        debugLog("🔄 appendRemuxedData: \(oldSize) -> \(newSize) bytes")
+        // Only log every 10MB to reduce log noise
+        let newSize = getRemuxedSize()
+        if newSize % (10 * 1024 * 1024) < data.count {
+            debugLog("🔄 Remuxed: \(newSize / 1024 / 1024) MB")
+        }
     }
 
     private func getRemuxedData(at offset: Int64, length: Int) -> Data {
