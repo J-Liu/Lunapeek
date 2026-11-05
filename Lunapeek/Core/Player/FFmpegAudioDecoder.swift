@@ -149,17 +149,9 @@ public final class FFmpegAudioDecoder: LPAudioDecoderProtocol {
     public func flush() {
         guard let context = codecContext, let frame = frame else { return }
 
-        avcodec_send_packet(context, nil)
-
-        while true {
-            let ret = avcodec_receive_frame(context, frame)
-            if ret < 0 { break }
-
-            if let audioFrame = convertFrame(frame) {
-                onAudioDecoded?(audioFrame)
-            }
-            av_frame_unref(frame)
-        }
+        // Use avcodec_flush_buffers to properly reset decoder state
+        avcodec_flush_buffers(context)
+        debugLog("🔊 FFmpegAudio: Decoder flushed")
     }
 
     public func close() {

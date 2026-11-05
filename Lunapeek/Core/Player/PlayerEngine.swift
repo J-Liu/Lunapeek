@@ -427,8 +427,15 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
             // Don't log decode "failures" - B-frames may not produce output immediately
             // This is normal behavior, not an error
         } else if streamIdx == audioStreamIndex {
+            // Debug: check if decoder exists
+            if audioDecoder == nil {
+                debugLog("❌ PlayerEngine: audioDecoder is nil when trying to decode audio packet!")
+                return
+            }
             let decoded = audioDecoder?.decode(packet: packet) ?? false
-            // Don't log decode "failures" - some packets may not produce output
+            if !decoded {
+                debugLog("⚠️ PlayerEngine: audio decode returned false for packet at pts=\(packet.pointee.pts)")
+            }
         }
     }
 

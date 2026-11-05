@@ -52,6 +52,9 @@ final class PlayerViewController: UIViewController {
     // Pause state (for center play button)
     private var isPaused = false
 
+    // Progress bar dragging state
+    private var isProgressDragging = false
+
     // Current playback rate
     private var currentRate: Float = 1.0
     private let availableRates: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
@@ -354,6 +357,8 @@ final class PlayerViewController: UIViewController {
         progressBar.maximumValue = 100
         progressBar.value = 0
         progressBar.tintColor = .systemBlue
+        // Mark dragging started
+        progressBar.addTarget(self, action: #selector(progressDragBegan), for: .touchDown)
         // Only update UI during drag, actual seek happens on release
         progressBar.addTarget(self, action: #selector(progressDragChanged), for: .valueChanged)
         // Perform seek when user releases the slider
@@ -1857,6 +1862,12 @@ final class PlayerViewController: UIViewController {
         playButton.setImage(image, for: .normal)
     }
 
+    @objc private func progressDragBegan() {
+        // Mark that user is dragging the progress slider
+        isProgressDragging = true
+        resetControlsHideTimer()
+    }
+
     @objc private func progressDragChanged() {
         // Only update UI during drag, don't seek yet
         resetControlsHideTimer()
@@ -1882,6 +1893,9 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func progressDragEnded() {
+        // Clear dragging flag
+        isProgressDragging = false
+
         // Perform actual seek when user releases the slider
         resetControlsHideTimer()
 
@@ -1987,6 +2001,9 @@ final class PlayerViewController: UIViewController {
 
     /// Update progress from LPPlayerEngine
     private func updateProgressFromEngine(current: Double, duration: Double) {
+        // Don't update progress while user is dragging the slider
+        guard !isProgressDragging else { return }
+
         guard duration > 0 else { return }
 
         let progress = (current / duration) * 100
