@@ -47,13 +47,13 @@ public final class LPVideoFrame {
 /// Audio frame decoded by decoder
 public final class LPAudioFrame {
     public let data: Data
-    public let pts: Int64
-    public let duration: Int64
+    public let pts: CMTime  // Presentation timestamp
+    public let duration: CMTime  // Frame duration
     public let sampleRate: Int32
     public let channels: Int32
     public let format: AVSampleFormat
 
-    public init(data: Data, pts: Int64, duration: Int64, sampleRate: Int32, channels: Int32, format: AVSampleFormat) {
+    public init(data: Data, pts: CMTime, duration: CMTime, sampleRate: Int32, channels: Int32, format: AVSampleFormat) {
         self.data = data
         self.pts = pts
         self.duration = duration
