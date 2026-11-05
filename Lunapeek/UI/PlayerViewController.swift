@@ -8,6 +8,9 @@ import AVFoundation
 import AVKit
 import MediaPlayer
 
+// AV_TIME_BASE constant (microseconds per second)
+private let AV_TIME_BASE: Int64 = 1000000
+
 final class PlayerViewController: UIViewController {
     private let url: URL
     private var lpPlayerEngine: LPPlayerEngine?
@@ -773,6 +776,19 @@ final class PlayerViewController: UIViewController {
 
     @objc private func backwardTapped() {
         resetControlsHideTimer()
+
+        // Handle LPPlayerEngine
+        if let engine = lpPlayerEngine {
+            let currentSeconds = Double(engine.currentTime) / Double(AV_TIME_BASE)
+            let newSeconds = max(0, currentSeconds - 10)
+            let newMicroseconds = Int64(newSeconds * Double(AV_TIME_BASE))
+            Task {
+                await engine.seek(to: newMicroseconds)
+            }
+            return
+        }
+
+        // Handle AVQueuePlayer
         guard let player = avQueuePlayer else { return }
         let currentTime = player.currentTime().seconds
         let newTime = max(0, currentTime - 10)
@@ -782,6 +798,20 @@ final class PlayerViewController: UIViewController {
 
     @objc private func forwardTapped() {
         resetControlsHideTimer()
+
+        // Handle LPPlayerEngine
+        if let engine = lpPlayerEngine {
+            let currentSeconds = Double(engine.currentTime) / Double(AV_TIME_BASE)
+            let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
+            let newSeconds = min(durationSeconds, currentSeconds + 10)
+            let newMicroseconds = Int64(newSeconds * Double(AV_TIME_BASE))
+            Task {
+                await engine.seek(to: newMicroseconds)
+            }
+            return
+        }
+
+        // Handle AVQueuePlayer
         guard let player = avQueuePlayer else { return }
         let currentTime = player.currentTime().seconds
         let duration = player.currentItem?.duration.seconds ?? 0
@@ -1887,6 +1917,25 @@ final class PlayerViewController: UIViewController {
     }
 
     @objc private func progressChanged() {
+        resetControlsHideTimer()
+
+        // Handle LPPlayerEngine
+        if let engine = lpPlayerEngine {
+            let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
+            guard durationSeconds > 0 else { return }
+
+            let targetTime = durationSeconds * Double(progressBar.value) / 100
+            let targetMicroseconds = Int64(targetTime * Double(AV_TIME_BASE))
+
+            Task {
+                await engine.seek(to: targetMicroseconds)
+            }
+
+            showSeekIndicator(seconds: targetTime)
+            return
+        }
+
+        // Handle AVQueuePlayer
         guard let player = avQueuePlayer else { return }
 
         let duration = player.currentItem?.duration.seconds ?? 0
@@ -1898,17 +1947,36 @@ final class PlayerViewController: UIViewController {
 
         // Show time indicator
         showSeekIndicator(seconds: targetTime)
-
-        // Reset controls hide timer
-        resetControlsHideTimer()
     }
 
     @objc private func progressBarTapped(_ gesture: UITapGestureRecognizer) {
-        guard let player = avQueuePlayer else { return }
+        resetControlsHideTimer()
 
         let location = gesture.location(in: progressBar)
         let percentage = Double(location.x / progressBar.bounds.width)
         let clampedPercentage = max(0, min(1, percentage))
+
+        // Handle LPPlayerEngine
+        if let engine = lpPlayerEngine {
+            let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
+            guard durationSeconds > 0 else { return }
+
+            let targetTime = durationSeconds * clampedPercentage
+            let targetMicroseconds = Int64(targetTime * Double(AV_TIME_BASE))
+
+            Task {
+                await engine.seek(to: targetMicroseconds)
+            }
+
+            // Update slider visual
+            progressBar.value = Float(clampedPercentage * 100)
+
+            showSeekIndicator(seconds: targetTime)
+            return
+        }
+
+        // Handle AVQueuePlayer
+        guard let player = avQueuePlayer else { return }
 
         let duration = player.currentItem?.duration.seconds ?? 0
         guard duration > 0 else { return }
@@ -1922,9 +1990,6 @@ final class PlayerViewController: UIViewController {
 
         // Show time indicator
         showSeekIndicator(seconds: targetTime)
-
-        // Reset controls hide timer
-        resetControlsHideTimer()
     }
 
     private func updateProgress() {
