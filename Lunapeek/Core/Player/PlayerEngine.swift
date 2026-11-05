@@ -220,7 +220,14 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
                 if needsSoftwareDecoding {
                     // Use FFmpeg software decoder
                     videoDecoder = FFmpegSoftwareDecoder()
-                    debugLog("📺 Video stream: \(stream.index), codec: \(stream.codecId) (SOFTWARE)")
+                    let success = videoDecoder?.open(codecParams: stream.codecParams, streamIndex: stream.index) ?? false
+                    if success {
+                        debugLog("📺 Video stream: \(stream.index), codec: \(stream.codecId) (SOFTWARE)")
+                    } else {
+                        debugLog("❌ Video stream: \(stream.index), codec: \(stream.codecId) (SOFTWARE FAILED)")
+                        videoDecoder = nil
+                        continue
+                    }
                 } else {
                     // Try VideoToolbox hardware decoder first
                     let vtDecoder = VideoToolboxDecoder()
@@ -261,7 +268,14 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
                 if needsSoftwareAudio {
                     // Use FFmpeg software audio decoder
                     audioDecoder = FFmpegAudioDecoder()
-                    debugLog("🔊 Audio stream: \(stream.index), codec: \(stream.codecId) (SOFTWARE)")
+                    let success = audioDecoder?.open(codecParams: stream.codecParams, streamIndex: stream.index) ?? false
+                    if success {
+                        debugLog("🔊 Audio stream: \(stream.index), codec: \(stream.codecId) (SOFTWARE)")
+                    } else {
+                        debugLog("❌ Audio stream: \(stream.index), codec: \(stream.codecId) (SOFTWARE FAILED)")
+                        audioDecoder = nil
+                        continue
+                    }
                 } else {
                     // Try AudioToolbox hardware decoder first
                     let atDecoder = AudioToolboxDecoder()
