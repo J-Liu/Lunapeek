@@ -37,8 +37,8 @@ public final class VideoToolboxDecoder: LPVideoDecoderProtocol {
             // Actual keyframe status is tracked at packet level
             let frame = LPVideoFrame(
                 pixelBuffer: imageBuffer,
-                pts: pts.value,
-                duration: duration.value,
+                pts: pts,
+                duration: duration,
                 isSync: true
             )
             decoder.onFrameDecoded?(frame)

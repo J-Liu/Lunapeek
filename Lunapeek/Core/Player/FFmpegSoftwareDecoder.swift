@@ -4,6 +4,7 @@
 // under Section 7. See LICENSE for details.
 
 import Foundation
+import CoreMedia
 import CoreVideo
 import FFmpegBridge
 
@@ -285,8 +286,15 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
             return nil
         }
 
-        let pts = frame.pointee.pts != AV_NOPTS_VALUE ? frame.pointee.pts : frame.pointee.best_effort_timestamp
-        let duration = frame.pointee.duration
+        let ptsValue = frame.pointee.pts != AV_NOPTS_VALUE ? frame.pointee.pts : frame.pointee.best_effort_timestamp
+        let durationValue = frame.pointee.duration
+
+        // Convert to CMTime using timebase
+        // pts is in stream timebase units, convert to seconds then to CMTime
+        let ptsSeconds = Double(ptsValue) * Double(timebase.num) / Double(timebase.den)
+        let durationSeconds = Double(durationValue) * Double(timebase.num) / Double(timebase.den)
+        let pts = CMTime(seconds: ptsSeconds, preferredTimescale: 600)
+        let duration = CMTime(seconds: durationSeconds, preferredTimescale: 600)
 
         // Check keyframe
         let isKeyframe = (Int32(frame.pointee.flags) & AV_FRAME_FLAG_KEY) != 0

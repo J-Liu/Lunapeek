@@ -144,7 +144,9 @@ public final class LPAudioRenderer {
         queue.async { [weak self] in
             self?.pendingFrames.removeAll()
         }
-        playerNode?.stop()
+        // Use pause() instead of stop() so we can resume playback
+        // stop() requires re-initializing the player node
+        playerNode?.pause()
     }
 
     /// Reset the renderer

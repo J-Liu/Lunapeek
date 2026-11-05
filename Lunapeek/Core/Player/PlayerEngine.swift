@@ -454,7 +454,7 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     private func handleVideoFrame(_ frame: LPVideoFrame) {
         // Skip frames during seek to prevent progress bar bounce
         if isSeeking {
-            debugLog("⚠️ PlayerEngine: handleVideoFrame skipped during seek, pts=\(frame.pts)")
+            debugLog("⚠️ PlayerEngine: handleVideoFrame skipped during seek, pts=\(frame.pts.seconds)")
             return
         }
 
@@ -465,8 +465,9 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         }
         videoRenderer?(frame)
 
-        // Update current time and notify progress
-        currentTime = frame.pts
+        // Update current time - convert CMTime to AV_TIME_BASE (microseconds)
+        let ptsMicroseconds = Int64(frame.pts.seconds * Double(AV_TIME_BASE))
+        currentTime = ptsMicroseconds
         notifyProgress()
     }
 
@@ -490,12 +491,9 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
             return
         }
 
-        // Convert currentTime from stream timebase to AV_TIME_BASE (microseconds)
-        let avTimebaseQ = AVRational(num: 1, den: Int32(AV_TIME_BASE))
-        let currentTimeInAvTimebase = av_rescale_q(currentTime, videoTimebase, avTimebaseQ)
-
+        // currentTime is already in AV_TIME_BASE (microseconds)
         // Convert to seconds
-        let currentSeconds = Double(currentTimeInAvTimebase) / Double(AV_TIME_BASE)
+        let currentSeconds = Double(currentTime) / Double(AV_TIME_BASE)
         let durationSeconds = Double(duration) / Double(AV_TIME_BASE)
 
         onProgress?(currentSeconds, durationSeconds)

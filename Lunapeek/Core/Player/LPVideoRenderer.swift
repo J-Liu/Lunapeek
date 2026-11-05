@@ -49,23 +49,10 @@ public final class LPVideoRenderer {
             return
         }
 
-        // Create timing info - pts is in milliseconds, convert to CMTime
-        let pts = CMTime(
-            value: frame.pts,
-            timescale: 1000,  // milliseconds
-            flags: .valid,
-            epoch: 0
-        )
-        let duration = CMTime(
-            value: frame.duration,
-            timescale: 1000,  // milliseconds
-            flags: .valid,
-            epoch: 0
-        )
-
+        // Use the CMTime from frame directly
         var timingInfo = CMSampleTimingInfo(
-            duration: duration,
-            presentationTimeStamp: pts,
+            duration: frame.duration,
+            presentationTimeStamp: frame.pts,
             decodeTimeStamp: .invalid
         )
 
@@ -88,7 +75,7 @@ public final class LPVideoRenderer {
 
         // Enqueue for display
         displayLayer.sampleBufferRenderer.enqueue(sampleBuffer)
-        debugLog("✅ VideoRenderer: enqueued frame, pts=\(frame.pts)")
+        debugLog("✅ VideoRenderer: enqueued frame, pts=\(frame.pts.seconds)")
         isConfigured = true
     }
 

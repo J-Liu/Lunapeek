@@ -4,14 +4,15 @@
 // under Section 7. See LICENSE for details.
 
 import Foundation
+import CoreMedia
 import CoreVideo
 import FFmpegBridge
 
 /// Video frame decoded by hardware or software decoder
 public final class LPVideoFrame {
     public let pixelBuffer: CVPixelBuffer?
-    public let pts: Int64
-    public let duration: Int64
+    public let pts: CMTime  // Presentation timestamp
+    public let duration: CMTime  // Frame duration
     public let isSync: Bool  // Keyframe
 
     // For software decoding (FFmpeg)
@@ -20,7 +21,7 @@ public final class LPVideoFrame {
     public let height: Int32
     public let format: AVPixelFormat
 
-    public init(pixelBuffer: CVPixelBuffer, pts: Int64, duration: Int64, isSync: Bool) {
+    public init(pixelBuffer: CVPixelBuffer, pts: CMTime, duration: CMTime, isSync: Bool) {
         self.pixelBuffer = pixelBuffer
         self.pts = pts
         self.duration = duration
@@ -31,7 +32,7 @@ public final class LPVideoFrame {
         self.format = AV_PIX_FMT_NONE
     }
 
-    public init(yuvData: Data, width: Int32, height: Int32, format: AVPixelFormat, pts: Int64, duration: Int64, isSync: Bool) {
+    public init(yuvData: Data, width: Int32, height: Int32, format: AVPixelFormat, pts: CMTime, duration: CMTime, isSync: Bool) {
         self.pixelBuffer = nil
         self.pts = pts
         self.duration = duration
