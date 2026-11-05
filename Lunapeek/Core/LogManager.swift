@@ -62,7 +62,7 @@ final class LogManager: @unchecked Sendable {
 }
 
 nonisolated func debugLog(_ message: String) {
-    Task { @MainActor in
+    DispatchQueue.main.async {
         LogManager.shared.log(message)
     }
 }
