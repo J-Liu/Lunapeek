@@ -159,6 +159,9 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         let timestampSec = Double(timestamp) / Double(AV_TIME_BASE)
         debugLog("🎬 PlayerEngine: Seeking to \(timestampSec) seconds")
 
+        // Update current time immediately so UI queries get correct position
+        currentTime = timestamp
+
         // Set seeking flag FIRST to prevent old frames from updating progress
         isSeeking = true
         expectedSeekPts = timestamp

@@ -143,6 +143,8 @@ public final class LPAudioRenderer {
     public func flush() {
         queue.async { [weak self] in
             self?.pendingFrames.removeAll()
+            // Reset playing state so we can restart
+            self?._isPlaying = false
         }
         // Use pause() instead of stop() so we can resume playback
         // stop() requires re-initializing the player node
