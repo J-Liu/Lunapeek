@@ -51,19 +51,28 @@ public final class LPAudioRenderer {
     /// Enqueue a decoded audio frame for playback
     public func enqueue(_ frame: LPAudioFrame) {
         queue.async { [weak self] in
-            self?.pendingFrames.append(frame)
-            self?.processPendingFrames()
+            guard let self = self else { return }
+            self.pendingFrames.append(frame)
+
+            // Configure format on main thread if needed (AVAudioEngine requires main thread)
+            if self.audioFormat == nil {
+                DispatchQueue.main.sync {
+                    self.configureFormat(sampleRate: frame.sampleRate, channels: frame.channels)
+                }
+            }
+
+            // Only process if already playing
+            if self.isPlaying {
+                self.processPendingFrames()
+            }
         }
     }
 
     private func processPendingFrames() {
-        guard let playerNode = playerNode, isPlaying else { return }
+        guard let playerNode = playerNode, isPlaying, audioFormat != nil else { return }
 
         while !pendingFrames.isEmpty {
             let frame = pendingFrames.removeFirst()
-
-            // Configure format on first frame
-            configureFormat(sampleRate: frame.sampleRate, channels: frame.channels)
 
             guard let format = audioFormat else { continue }
 
@@ -95,8 +104,11 @@ public final class LPAudioRenderer {
             try engine.start()
             playerNode?.play()
             isPlaying = true
-            processPendingFrames()
             debugLog("🔊 Audio renderer started")
+            // Process all pending frames on the queue
+            queue.async { [weak self] in
+                self?.processPendingFrames()
+            }
         } catch {
             debugLog("❌ Failed to start audio engine: \(error)")
         }
