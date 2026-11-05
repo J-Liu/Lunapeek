@@ -1229,6 +1229,12 @@ final class PlayerViewController: UIViewController {
         engine.audioRendererFlush = { [weak self] in
             self?.lpAudioRenderer?.flush()
         }
+        engine.videoRendererPlay = { [weak self] in
+            self?.lpVideoRenderer?.play()
+        }
+        engine.videoRendererPause = { [weak self] in
+            self?.lpVideoRenderer?.pause()
+        }
 
         // Observe state changes
         engine.onStateChanged = { [weak self] state in
