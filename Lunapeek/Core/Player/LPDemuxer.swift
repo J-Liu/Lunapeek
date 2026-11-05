@@ -195,16 +195,9 @@ public final class LPDemuxer {
         debugLog("📋 Demuxer: stop() called, setting isRunning=false")
         isStopping = true  // Prevent callbacks during stop
         isRunning = false
-        // Wait for read loop to finish (max 100ms)
-        var waitCount = 0
-        while isReading && waitCount < 10 {
-            Thread.sleep(forTimeInterval: 0.01)
-            waitCount += 1
-        }
-        if isReading {
-            debugLog("📋 Demuxer: stop() - read loop still active after 100ms")
-        }
-        isStopping = false  // Allow callbacks again
+        // Don't wait for read loop - let it exit on its own
+        // This prevents deadlocks when stop() is called from main thread
+        // while read loop is waiting in av_read_frame
     }
 
     /// Seek to timestamp
@@ -239,6 +232,17 @@ public final class LPDemuxer {
             // Timestamp is in AV_TIME_BASE
             let timestampSec = Double(timestamp) / Double(AV_TIME_BASE)
             debugLog("📋 Demuxer: Seeking to \(timestampSec) seconds (ts=\(timestamp), stream=\(finalStreamIdx), timebase=AV_TIME_BASE)")
+        }
+
+        // Wait for read loop to stop (max 200ms)
+        // This is necessary because FFmpeg seek operations require no concurrent reads
+        var waitCount = 0
+        while isReading && waitCount < 20 {
+            Thread.sleep(forTimeInterval: 0.01)
+            waitCount += 1
+        }
+        if isReading {
+            debugLog("⚠️ Demuxer: seek() - read loop still active, proceeding anyway")
         }
 
         // Use avformat_seek_file instead of av_seek_frame for more robust seeking
