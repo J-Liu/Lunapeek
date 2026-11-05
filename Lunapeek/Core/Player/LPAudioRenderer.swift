@@ -11,15 +11,18 @@ public final class LPAudioRenderer {
     private let engine = AVAudioEngine()
     private var playerNode: AVAudioPlayerNode?
     private var audioFormat: AVAudioFormat?
-    private var pendingFrames: [LPAudioFrame] = []
+    private let frameQueue = LPFrameQueue<LPAudioFrame>(maxSize: 60)
     private let queue = DispatchQueue(label: "com.lunapeek.audioRenderer")
 
-    // Thread-safe playing state
+    // Playback state
     private var _isPlaying = false
     private var isPlaying: Bool {
         get { queue.sync { _isPlaying } }
         set { queue.sync { _isPlaying = newValue } }
     }
+
+    // Audio clock for synchronization
+    public let audioClock = LPAudioClock()
 
     public init() {
         setupEngine()
@@ -48,31 +51,59 @@ public final class LPAudioRenderer {
         self.audioFormat = format
 
         if let format = format {
+            // Stop engine if running before reconnecting
+            let wasRunning = engine.isRunning
+            if wasRunning {
+                engine.stop()
+            }
+
             engine.disconnectNodeInput(engine.mainMixerNode)
             engine.connect(playerNode!, to: engine.mainMixerNode, format: format)
             debugLog("🔊 Audio format: \(sampleRate)Hz, \(channels)ch")
+
+            // Restart engine if it was running
+            if wasRunning {
+                do {
+                    try engine.start()
+                    debugLog("🔊 Audio engine restarted with new format")
+                } catch {
+                    debugLog("❌ Failed to restart audio engine: \(error)")
+                }
+            }
         }
     }
 
     /// Enqueue a decoded audio frame for playback
     public func enqueue(_ frame: LPAudioFrame) {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            self.pendingFrames.append(frame)
-            // Process if already playing
-            if self._isPlaying {
-                self.processPendingFrames()
+        // Configure format from first frame
+        if audioFormat == nil {
+            configureFormat(sampleRate: frame.sampleRate, channels: frame.channels)
+        }
+
+        // Push to frame queue
+        _ = frameQueue.push(frame)
+
+        // Process frames if playing
+        if isPlaying {
+            processFrames()
+
+            // Start engine if not running and we now have a format
+            if !engine.isRunning, audioFormat != nil {
+                do {
+                    try engine.start()
+                    debugLog("🔊 Audio renderer started (delayed)")
+                    playerNode?.play()
+                } catch {
+                    debugLog("❌ Failed to start audio engine: \(error)")
+                }
             }
         }
     }
 
-    private func processPendingFrames() {
-        // Called on queue, so _isPlaying is safe to access
-        guard let playerNode = playerNode, _isPlaying, audioFormat != nil else { return }
+    private func processFrames() {
+        guard let playerNode = playerNode, isPlaying, audioFormat != nil else { return }
 
-        while !pendingFrames.isEmpty {
-            let frame = pendingFrames.removeFirst()
-
+        while let frame = frameQueue.pop(wait: false) {
             guard let format = audioFormat else { continue }
 
             // Create audio buffer
@@ -90,76 +121,74 @@ public final class LPAudioRenderer {
 
             // Schedule buffer
             playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { _ in
-                // Buffer played back
+                // Buffer played back - could track progress here
             }
         }
     }
 
     /// Start playback
     public func play() {
-        // Get first frame info and set playing state on queue
-        var firstFrameInfo: (sampleRate: Int32, channels: Int32)?
-        var wasPlaying = false
-        queue.sync {
-            wasPlaying = _isPlaying
-            if let firstFrame = pendingFrames.first {
-                firstFrameInfo = (firstFrame.sampleRate, firstFrame.channels)
+        guard !isPlaying else { return }
+
+        isPlaying = true
+
+        // Start audio clock
+        audioClock.resume()
+
+        // Process any queued frames first
+        processFrames()
+
+        // Start engine if not running and we have a format
+        if !engine.isRunning, audioFormat != nil {
+            do {
+                try engine.start()
+                debugLog("🔊 Audio renderer started")
+            } catch {
+                debugLog("❌ Failed to start audio engine: \(error)")
+                return
             }
-        }
 
-        guard !wasPlaying else { return }
-
-        // Configure format from first pending frame if needed
-        if let info = firstFrameInfo, audioFormat == nil {
-            configureFormat(sampleRate: info.sampleRate, channels: info.channels)
-        }
-
-        do {
-            try engine.start()
+            // Start player node
             playerNode?.play()
-            debugLog("🔊 Audio renderer started")
-            // Set playing state and process frames on queue
-            queue.async { [weak self] in
-                guard let self = self else { return }
-                self._isPlaying = true
-                self.processPendingFrames()
-            }
-        } catch {
-            debugLog("❌ Failed to start audio engine: \(error)")
         }
     }
 
     /// Pause playback
     public func pause() {
-        queue.sync {
-            guard _isPlaying else { return }
-            _isPlaying = false
-        }
+        guard isPlaying else { return }
+
+        isPlaying = false
+
+        // Pause audio clock
+        audioClock.pause()
+
+        // Pause player node
         playerNode?.pause()
         engine.pause()
     }
 
-    /// Flush pending frames
+    /// Flush pending frames and reset state
     public func flush() {
-        queue.async { [weak self] in
-            self?.pendingFrames.removeAll()
-            // Reset playing state so we can restart
-            self?._isPlaying = false
-        }
-        // Use pause() instead of stop() so we can resume playback
-        // stop() requires re-initializing the player node
-        playerNode?.pause()
+        // Clear frame queue
+        frameQueue.flush()
+
+        // Reset playing state
+        isPlaying = false
+
+        // Reset audio clock
+        audioClock.reset()
+
+        // Stop and reset player node
+        playerNode?.stop()
     }
 
-    /// Reset the renderer
+    /// Reset the renderer completely
     public func reset() {
         flush()
         engine.stop()
         playerNode?.reset()
         audioFormat = nil
-        queue.sync {
-            _isPlaying = false
-        }
+        isPlaying = false
     }
 
     /// Set volume (0.0 to 1.0)
@@ -170,5 +199,15 @@ public final class LPAudioRenderer {
     /// Get current volume
     public var volume: Float {
         return engine.mainMixerNode.outputVolume
+    }
+
+    /// Get current playback time from audio clock
+    public var currentTime: CMTime {
+        return audioClock.currentTime
+    }
+
+    /// Set playback time (after seek)
+    public func setCurrentTime(_ time: CMTime) {
+        audioClock.setTime(time)
     }
 }

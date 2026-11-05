@@ -11,7 +11,30 @@ import UIKit
 /// Video renderer using AVSampleBufferDisplayLayer for hardware-accelerated display
 public final class LPVideoRenderer {
     private let displayLayer = AVSampleBufferDisplayLayer()
+    private let frameQueue = LPFrameQueue<LPVideoFrame>(maxSize: 30)
     private var isConfigured = false
+
+    // Playback state
+    private var _isPlaying = false
+    private let lock = NSLock()
+    private var isPlaying: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _isPlaying }
+        set { lock.lock(); defer { lock.unlock() }; _isPlaying = newValue }
+    }
+
+    // Audio clock reference for synchronization
+    private weak var audioClock: LPAudioClock?
+
+    // Video clock for when there's no audio
+    private var videoClockStartTime: Double = 0  // Wall clock when playback started
+    private var videoClockBase: CMTime = .zero   // Video position at start
+    private var displayQueue: DispatchQueue?
+
+    // Current time tracking
+    private var _currentTime: CMTime = .zero
+    public var currentTime: CMTime {
+        lock.lock(); defer { lock.unlock() }; return _currentTime
+    }
 
     public init() {
         setupDisplayLayer()
@@ -27,14 +50,88 @@ public final class LPVideoRenderer {
         displayLayer
     }
 
-    /// Start playback - no-op for display layer
-    public func play() {}
+    /// Set audio clock for synchronization
+    public func setAudioClock(_ clock: LPAudioClock) {
+        audioClock = clock
+    }
 
-    /// Pause playback - no-op for display layer
-    public func pause() {}
+    /// Start playback - begin display loop
+    public func play() {
+        guard !isPlaying else { return }
+        isPlaying = true
 
-    /// Enqueue a decoded video frame for display
-    public func enqueue(_ frame: LPVideoFrame) {
+        // Initialize video clock
+        videoClockStartTime = CACurrentMediaTime()
+
+        // Start display loop
+        displayQueue = DispatchQueue(label: "com.lunapeek.videoDisplay", qos: .userInteractive)
+        displayQueue?.async { [weak self] in
+            self?.displayLoop()
+        }
+    }
+
+    /// Pause playback - stop display loop
+    public func pause() {
+        isPlaying = false
+        displayQueue = nil
+    }
+
+    /// Get current playback time - use audio clock if available, otherwise video clock
+    private func getPlaybackTime() -> CMTime {
+        if let audioClock = audioClock {
+            return audioClock.currentTime
+        }
+
+        // Fallback to video clock
+        let elapsed = CACurrentMediaTime() - videoClockStartTime
+        return CMTimeAdd(videoClockBase, CMTime(seconds: elapsed, preferredTimescale: 1000000000))
+    }
+
+    /// Set video clock base time (after seek)
+    public func setVideoClockBase(_ time: CMTime) {
+        videoClockBase = time
+        videoClockStartTime = CACurrentMediaTime()
+    }
+
+    /// Display loop - show frames at correct time
+    private func displayLoop() {
+        while isPlaying {
+            // Get next frame
+            guard let frame = frameQueue.peek() else {
+                // No frame available, wait a bit
+                Thread.sleep(forTimeInterval: 0.001)
+                continue
+            }
+
+            // Check if it's time to display this frame
+            let framePts = frame.pts
+
+            // Get current playback time
+            let playbackTime = getPlaybackTime()
+
+            // Calculate wait time
+            let diff = CMTimeSubtract(framePts, playbackTime)
+            let waitSeconds = diff.seconds
+
+            if waitSeconds > 0.020 {
+                // Frame is in the future, wait a bit
+                Thread.sleep(forTimeInterval: min(waitSeconds * 0.5, 0.010))
+                continue
+            }
+
+            // Frame is due (or late) - display it
+            _ = frameQueue.pop(wait: false)
+            displayFrame(frame)
+
+            // Update current time
+            lock.lock()
+            _currentTime = framePts
+            lock.unlock()
+        }
+    }
+
+    /// Display a frame
+    private func displayFrame(_ frame: LPVideoFrame) {
         guard let pixelBuffer = frame.pixelBuffer else {
             debugLog("⚠️ VideoRenderer: frame has no pixelBuffer")
             return
@@ -81,12 +178,17 @@ public final class LPVideoRenderer {
 
         // Enqueue for display - AVSampleBufferDisplayLayer will handle timing based on pts
         displayLayer.sampleBufferRenderer.enqueue(sampleBuffer)
-        debugLog("✅ VideoRenderer: enqueued frame, pts=\(frame.pts.seconds)")
         isConfigured = true
+    }
+
+    /// Enqueue a decoded video frame for display
+    public func enqueue(_ frame: LPVideoFrame) {
+        frameQueue.push(frame)
     }
 
     /// Flush all pending frames
     public func flush() {
+        frameQueue.flush()
         displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: false, completionHandler: nil)
     }
 
@@ -94,6 +196,9 @@ public final class LPVideoRenderer {
     public func reset() {
         flush()
         isConfigured = false
+        isPlaying = false
+        displayQueue = nil
+        videoClockBase = .zero
     }
 
     /// Check if renderer has error

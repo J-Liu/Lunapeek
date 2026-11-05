@@ -42,15 +42,20 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     private var videoDecoder: LPVideoDecoderProtocol?
     private var audioDecoder: LPAudioDecoderProtocol?
 
+    // Frame queues for producer-consumer pattern
+    private let videoFrameQueue = LPFrameQueue<LPVideoFrame>(maxSize: 30)
+    private let audioFrameQueue = LPFrameQueue<LPAudioFrame>(maxSize: 60)
+
     // Renderers (callbacks)
     public var videoRenderer: ((LPVideoFrame) -> Void)?
     public var audioRenderer: ((LPAudioFrame) -> Void)?
-    public var videoRendererFlush: (() -> Void)?  // Called on seek to clear renderer
-    public var audioRendererFlush: (() -> Void)?  // Called on seek to clear renderer
-    public var videoRendererPlay: (() -> Void)?   // Called when playback starts
-    public var videoRendererPause: (() -> Void)?  // Called when playback pauses
-    public var audioRendererPlay: (() -> Void)?   // Called when playback starts
-    public var audioRendererPause: (() -> Void)?  // Called when playback pauses
+    public var videoRendererFlush: (() -> Void)?
+    public var audioRendererFlush: (() -> Void)?
+    public var videoRendererPlay: (() -> Void)?
+    public var videoRendererPause: (() -> Void)?
+    public var audioRendererPlay: (() -> Void)?
+    public var audioRendererPause: (() -> Void)?
+    public var videoRendererSetTime: ((CMTime) -> Void)?  // Set video clock base time
 
     // Stream tracking
     private var videoStreamIndex: Int?
@@ -60,9 +65,14 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
 
     // Playback control
     private var isPlaying = false
-    private var isSeeking = false
-    private var expectedSeekPts: Int64?  // Track expected position after seek
     private let stateLock = NSLock()
+
+    // Audio clock for synchronization (master clock for progress)
+    public let audioClock = LPAudioClock()
+    private var hasAudio = false
+
+    // Progress update timer
+    private var progressTimer: Timer?
 
     // Frame statistics (duration in AV_TIME_BASE microseconds)
     public private(set) var currentTime: Int64 = 0
@@ -134,9 +144,27 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         defer { stateLock.unlock() }
 
         guard state == .ready || state == .paused else { return }
+
+        let wasPaused = (state == .paused)
+
         state = .playing
         onStateChanged?(.playing)
         isPlaying = true
+
+        // Start or resume audio clock
+        if hasAudio {
+            if wasPaused {
+                // Resuming from pause
+                audioClock.resume()
+            } else {
+                // Starting fresh
+                audioClock.start()
+            }
+        }
+
+        // Start progress update timer
+        startProgressTimer()
+
         videoRendererPlay?()
         audioRendererPlay?()
         demuxer?.start()
@@ -151,6 +179,13 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         state = .paused
         onStateChanged?(.paused)
         isPlaying = false
+
+        // Pause audio clock
+        audioClock.pause()
+
+        // Stop progress timer
+        stopProgressTimer()
+
         videoRendererPause?()
         audioRendererPause?()
         // Don't stop demuxer - just stop rendering
@@ -167,62 +202,63 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         let timestampSec = Double(timestamp) / Double(AV_TIME_BASE)
         debugLog("🎬 PlayerEngine: Seeking to \(timestampSec) seconds")
 
-        // Update current time immediately so UI queries get correct position
-        currentTime = timestamp
-
-        // Set seeking flag FIRST to prevent old frames from updating progress
-        isSeeking = true
-        expectedSeekPts = timestamp
-
-        // Stop demuxer
+        // Stop demuxer first
         demuxer?.stop()
 
+        // Flush frame queues
+        videoFrameQueue.flush()
+        audioFrameQueue.flush()
+
         // Flush decoders
-        debugLog("🎬 PlayerEngine: Flushing decoders, videoDecoder=\(videoDecoder != nil), audioDecoder=\(audioDecoder != nil)")
         videoDecoder?.flush()
         audioDecoder?.flush()
-        debugLog("🎬 PlayerEngine: Flush complete, videoDecoder=\(videoDecoder != nil), audioDecoder=\(audioDecoder != nil)")
 
-        // Flush renderers to clear old frames
+        // Flush renderers
         videoRendererFlush?()
         audioRendererFlush?()
-        debugLog("🎬 PlayerEngine: Renderers flushed")
 
         // Seek demuxer - use -1 as stream index to use AV_TIME_BASE units
-        // This is more reliable than stream-based seeking for problematic files
         let success = demuxer?.seek(to: timestamp, streamIndex: -1) ?? false
 
-        if success && state == .playing {
-            debugLog("🎬 PlayerEngine: Restarting demuxer after seek")
-            demuxer?.start()
-            // Restart renderers after flush
-            videoRendererPlay?()
-            audioRendererPlay?()
-        } else if !success {
-            debugLog("⚠️ PlayerEngine: Seek failed, not restarting demuxer")
-            isSeeking = false
-            expectedSeekPts = nil
+        // Set audio clock to target time
+        let targetTime = CMTime(seconds: timestampSec, preferredTimescale: 1000000000)
+        audioClock.setTime(targetTime)
+
+        // Set video clock base time
+        videoRendererSetTime?(targetTime)
+
+        if success {
+            debugLog("✅ PlayerEngine: Seek succeeded at \(timestampSec)s")
+
+            // Reset frame queues
+            videoFrameQueue.reset()
+            audioFrameQueue.reset()
+
+            // Update current time
+            currentTime = timestamp
+
+            // Restart if playing
+            if state == .playing {
+                demuxer?.start()
+                videoRendererPlay?()
+                audioRendererPlay?()
+            }
         } else {
-            debugLog("🎬 PlayerEngine: State is \(state), not restarting demuxer")
-            isSeeking = false
-            expectedSeekPts = nil
+            debugLog("⚠️ PlayerEngine: Seek failed")
         }
     }
 
     /// Stop and reset
     public func stop() {
-        // First stop playback and demuxer
         isPlaying = false
+        stopProgressTimer()
         demuxer?.stop()
 
-        // Wait a bit for demuxer to stop processing packets
         Thread.sleep(forTimeInterval: 0.1)
 
-        // Now close decoder
         videoDecoder?.close()
         audioDecoder?.close()
 
-        // Close demuxer
         demuxer?.close()
 
         demuxer = nil
@@ -233,6 +269,10 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         audioStreamIndex = nil
         currentTime = 0
         duration = 0
+
+        audioClock.reset()
+        videoFrameQueue.flush()
+        audioFrameQueue.flush()
 
         state = .idle
         onStateChanged?(.idle)
@@ -310,6 +350,7 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
             } else if stream.isAudio && audioStreamIndex == nil {
                 audioStreamIndex = stream.index
                 audioTimebase = stream.timebase
+                hasAudio = true
 
                 // Check if codec needs software decoding
                 let needsSoftwareAudio = Self.needsSoftwareAudioDecoding(codecId: stream.codecId)
@@ -395,61 +436,12 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     // MARK: - LPDemuxerDelegate
 
     public func demuxerDidReadPacket(_ packet: UnsafeMutablePointer<AVPacket>, streamIndex: Int) {
-        // Always process packets even when paused - decoder needs data
         let streamIdx = Int(packet.pointee.stream_index)
-        let pts = packet.pointee.pts
-
-        // Only log every 100 packets to reduce noise
-        if streamIdx == videoStreamIndex || streamIdx == audioStreamIndex {
-            debugLog("📦 Packet: stream=\(streamIdx), pts=\(pts), videoIdx=\(videoStreamIndex ?? -1), audioIdx=\(audioStreamIndex ?? -1)")
-        }
-
-        // Check if we've received a packet after seek
-        if isSeeking, let expectedPts = expectedSeekPts {
-            // Convert packet pts to AV_TIME_BASE for comparison
-            let ptsInAvTimebase: Int64
-            if streamIdx == videoStreamIndex {
-                ptsInAvTimebase = av_rescale_q(pts, videoTimebase, AVRational(num: 1, den: Int32(AV_TIME_BASE)))
-            } else if streamIdx == audioStreamIndex {
-                ptsInAvTimebase = av_rescale_q(pts, audioTimebase, AVRational(num: 1, den: Int32(AV_TIME_BASE)))
-            } else {
-                ptsInAvTimebase = pts
-            }
-
-            // Allow some tolerance (10 seconds in AV_TIME_BASE = 10,000,000)
-            let tolerance: Int64 = 10_000_000
-
-            // Clear seeking flag after receiving first packet
-            if abs(ptsInAvTimebase - expectedPts) <= tolerance || ptsInAvTimebase > expectedPts - tolerance * 10 {
-                debugLog("🎬 PlayerEngine: Seek completed at \(Double(ptsInAvTimebase) / Double(AV_TIME_BASE))s (expected \(Double(expectedPts) / Double(AV_TIME_BASE))s)")
-                isSeeking = false
-                expectedSeekPts = nil
-            } else {
-                let expectedSec = Double(expectedPts) / Double(AV_TIME_BASE)
-                let actualSec = Double(ptsInAvTimebase) / Double(AV_TIME_BASE)
-                debugLog("⚠️ PlayerEngine: Packet pts \(actualSec)s far from expected \(expectedSec)s, may have seek issue")
-            }
-        }
 
         if streamIdx == videoStreamIndex {
-            // Debug: check if decoder exists
-            if videoDecoder == nil {
-                debugLog("❌ PlayerEngine: videoDecoder is nil when trying to decode video packet!")
-                return
-            }
-            let decoded = videoDecoder?.decode(packet: packet) ?? false
-            // Don't log decode "failures" - B-frames may not produce output immediately
-            // This is normal behavior, not an error
+            videoDecoder?.decode(packet: packet)
         } else if streamIdx == audioStreamIndex {
-            // Debug: check if decoder exists
-            if audioDecoder == nil {
-                debugLog("❌ PlayerEngine: audioDecoder is nil when trying to decode audio packet!")
-                return
-            }
-            let decoded = audioDecoder?.decode(packet: packet) ?? false
-            if !decoded {
-                debugLog("⚠️ PlayerEngine: audio decode returned false for packet at pts=\(packet.pointee.pts)")
-            }
+            audioDecoder?.decode(packet: packet)
         }
     }
 
@@ -473,36 +465,28 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     // MARK: - Frame Handlers
 
     private func handleVideoFrame(_ frame: LPVideoFrame) {
-        // Skip frames during seek to prevent progress bar bounce
-        if isSeeking {
-            debugLog("⚠️ PlayerEngine: handleVideoFrame skipped during seek, pts=\(frame.pts.seconds)")
-            return
-        }
+        guard isPlaying else { return }
 
-        // Debug: log if frame is dropped
-        if !isPlaying {
-            debugLog("⚠️ PlayerEngine: handleVideoFrame dropped, isPlaying=\(isPlaying), state=\(state)")
-            return
-        }
+        // Push to video frame queue
+        videoFrameQueue.push(frame)
+
+        // Also send to renderer callback for compatibility
         videoRenderer?(frame)
 
-        // Update current time - convert CMTime to AV_TIME_BASE (microseconds)
+        // Update current time from frame PTS (for non-audio case)
+        // This is used as fallback when there's no audio clock
         let ptsMicroseconds = Int64(frame.pts.seconds * Double(AV_TIME_BASE))
         currentTime = ptsMicroseconds
-        notifyProgress()
+        // Don't call notifyProgress here - the timer handles it
     }
 
     private func handleAudioFrame(_ frame: LPAudioFrame) {
-        // Skip frames during seek
-        if isSeeking {
-            return
-        }
+        guard isPlaying else { return }
 
-        // Debug: log if frame is dropped
-        if !isPlaying {
-            debugLog("⚠️ PlayerEngine: handleAudioFrame dropped, isPlaying=\(isPlaying), state=\(state)")
-            return
-        }
+        // Push to audio frame queue
+        audioFrameQueue.push(frame)
+
+        // Also send to renderer callback
         audioRenderer?(frame)
     }
 
@@ -512,12 +496,41 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
             return
         }
 
-        // currentTime is already in AV_TIME_BASE (microseconds)
-        // Convert to seconds
-        let currentSeconds = Double(currentTime) / Double(AV_TIME_BASE)
+        // Use audio clock as master for current time (like KSPlayer)
+        // If no audio, fall back to tracking via video frames
+        let currentSeconds: Double
+        if hasAudio {
+            currentSeconds = audioClock.currentTimeSeconds
+        } else {
+            // currentTime is already in AV_TIME_BASE (microseconds)
+            // Convert to seconds
+            currentSeconds = Double(currentTime) / Double(AV_TIME_BASE)
+        }
+
         let durationSeconds = Double(duration) / Double(AV_TIME_BASE)
 
         onProgress?(currentSeconds, durationSeconds)
+    }
+
+    // MARK: - Progress Timer
+
+    private func startProgressTimer() {
+        // Stop any existing timer
+        stopProgressTimer()
+
+        // Create timer on main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                self?.notifyProgress()
+            }
+        }
+    }
+
+    private func stopProgressTimer() {
+        DispatchQueue.main.async { [weak self] in
+            self?.progressTimer?.invalidate()
+            self?.progressTimer = nil
+        }
     }
 }
 
