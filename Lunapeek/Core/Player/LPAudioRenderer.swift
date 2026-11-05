@@ -11,9 +11,15 @@ public final class LPAudioRenderer {
     private let engine = AVAudioEngine()
     private var playerNode: AVAudioPlayerNode?
     private var audioFormat: AVAudioFormat?
-    private var isPlaying = false
     private var pendingFrames: [LPAudioFrame] = []
     private let queue = DispatchQueue(label: "com.lunapeek.audioRenderer")
+
+    // Thread-safe playing state
+    private var _isPlaying = false
+    private var isPlaying: Bool {
+        get { queue.sync { _isPlaying } }
+        set { queue.sync { _isPlaying = newValue } }
+    }
 
     public init() {
         setupEngine()
@@ -53,23 +59,16 @@ public final class LPAudioRenderer {
         queue.async { [weak self] in
             guard let self = self else { return }
             self.pendingFrames.append(frame)
-
-            // Configure format on main thread if needed (AVAudioEngine requires main thread)
-            if self.audioFormat == nil {
-                DispatchQueue.main.sync {
-                    self.configureFormat(sampleRate: frame.sampleRate, channels: frame.channels)
-                }
-            }
-
-            // Only process if already playing
-            if self.isPlaying {
+            // Process if already playing
+            if self._isPlaying {
                 self.processPendingFrames()
             }
         }
     }
 
     private func processPendingFrames() {
-        guard let playerNode = playerNode, isPlaying, audioFormat != nil else { return }
+        // Called on queue, so _isPlaying is safe to access
+        guard let playerNode = playerNode, _isPlaying, audioFormat != nil else { return }
 
         while !pendingFrames.isEmpty {
             let frame = pendingFrames.removeFirst()
@@ -98,16 +97,32 @@ public final class LPAudioRenderer {
 
     /// Start playback
     public func play() {
-        guard !isPlaying else { return }
+        // Get first frame info and set playing state on queue
+        var firstFrameInfo: (sampleRate: Int32, channels: Int32)?
+        var wasPlaying = false
+        queue.sync {
+            wasPlaying = _isPlaying
+            if let firstFrame = pendingFrames.first {
+                firstFrameInfo = (firstFrame.sampleRate, firstFrame.channels)
+            }
+        }
+
+        guard !wasPlaying else { return }
+
+        // Configure format from first pending frame if needed
+        if let info = firstFrameInfo, audioFormat == nil {
+            configureFormat(sampleRate: info.sampleRate, channels: info.channels)
+        }
 
         do {
             try engine.start()
             playerNode?.play()
-            isPlaying = true
             debugLog("🔊 Audio renderer started")
-            // Process all pending frames on the queue
+            // Set playing state and process frames on queue
             queue.async { [weak self] in
-                self?.processPendingFrames()
+                guard let self = self else { return }
+                self._isPlaying = true
+                self.processPendingFrames()
             }
         } catch {
             debugLog("❌ Failed to start audio engine: \(error)")
@@ -116,10 +131,12 @@ public final class LPAudioRenderer {
 
     /// Pause playback
     public func pause() {
-        guard isPlaying else { return }
+        queue.sync {
+            guard _isPlaying else { return }
+            _isPlaying = false
+        }
         playerNode?.pause()
         engine.pause()
-        isPlaying = false
     }
 
     /// Flush pending frames
@@ -136,7 +153,9 @@ public final class LPAudioRenderer {
         engine.stop()
         playerNode?.reset()
         audioFormat = nil
-        isPlaying = false
+        queue.sync {
+            _isPlaying = false
+        }
     }
 
     /// Set volume (0.0 to 1.0)
