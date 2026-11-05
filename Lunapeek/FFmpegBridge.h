@@ -12,6 +12,9 @@
 #include <libavutil/opt.h>
 #include <libavutil/error.h>
 #include <libavutil/timestamp.h>
+#include <libavutil/imgutils.h>
+#include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 
 // IO Bridge
 #include "Core/FFmpeg/FFmpegIOBridge.h"
