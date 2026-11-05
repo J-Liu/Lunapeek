@@ -141,6 +141,7 @@ public final class LPDemuxer {
     /// Start reading packets
     public func start() {
         guard let formatCtx = formatContext else { return }
+        debugLog("📋 Demuxer: start() called, setting isRunning=true")
         isRunning = true
 
         queue.async { [weak self] in
@@ -255,20 +256,26 @@ public final class LPDemuxer {
 
     private func readPackets(_ formatCtx: UnsafeMutablePointer<AVFormatContext>) {
         var packet = AVPacket()
+        var packetCount = 0
+
+        debugLog("📋 Demuxer: Starting read loop, isRunning=\(isRunning)")
 
         while isRunning {
             let result = av_read_frame(formatCtx, &packet)
 
             if result < 0 {
                 if result == LP_AVERROR_EOF {
-                    debugLog("📋 Demuxer: Reached EOF")
+                    debugLog("📋 Demuxer: Reached EOF after \(packetCount) packets")
                     delegate?.demuxerDidComplete(error: nil)
                 } else {
+                    debugLog("📋 Demuxer: Read error \(result) after \(packetCount) packets")
                     let error = NSError(domain: "DemuxerError", code: Int(result), userInfo: nil)
                     delegate?.demuxerDidComplete(error: error)
                 }
                 break
             }
+
+            packetCount += 1
 
             // Notify delegate with packet
             let streamIndex = Int(packet.stream_index)
@@ -284,6 +291,8 @@ public final class LPDemuxer {
 
             av_packet_unref(&packet)
         }
+
+        debugLog("📋 Demuxer: Read loop ended, total packets=\(packetCount)")
     }
 
     // MARK: - C Callbacks

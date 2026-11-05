@@ -331,11 +331,14 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     public func demuxerDidReadPacket(_ packet: UnsafeMutablePointer<AVPacket>, streamIndex: Int) {
         // Always process packets even when paused - decoder needs data
         let streamIdx = Int(packet.pointee.stream_index)
+        debugLog("📦 Packet received: stream=\(streamIdx), pts=\(packet.pointee.pts), isPlaying=\(isPlaying)")
 
         if streamIdx == videoStreamIndex {
-            _ = videoDecoder?.decode(packet: packet)
+            let decoded = videoDecoder?.decode(packet: packet) ?? false
+            debugLog("📺 Video decode result: \(decoded)")
         } else if streamIdx == audioStreamIndex {
-            _ = audioDecoder?.decode(packet: packet)
+            let decoded = audioDecoder?.decode(packet: packet) ?? false
+            debugLog("🔊 Audio decode result: \(decoded)")
         }
     }
 
