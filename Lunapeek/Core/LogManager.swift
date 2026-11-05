@@ -4,14 +4,15 @@
 // under Section 7. See LICENSE for details.
 
 import Foundation
+import os
 
 /// Simple log manager for debugging
-final class LogManager {
-    static let shared = LogManager()
+final class LogManager: @unchecked Sendable {
+    static let shared: LogManager = LogManager()
 
-    private(set) var logs: [String] = []
-    private let lock = NSLock()
-    var handler: ((String) -> Void)?
+    private var logs: OSAllocatedUnfairLock<[String]> = OSAllocatedUnfairLock(initialState: [])
+    private var handler: OSAllocatedUnfairLock<((String) -> Void)?> = OSAllocatedUnfairLock(initialState: nil)
+    private var logFile: OSAllocatedUnfairLock<URL?> = OSAllocatedUnfairLock(initialState: nil)
 
     private init() {}
 
@@ -19,22 +20,49 @@ final class LogManager {
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         let entry = "[\(timestamp)] \(message)"
 
-        lock.lock()
-        logs.append(entry)
-        if logs.count > 100 { logs.removeFirst() }
-        lock.unlock()
+        logs.withLock {
+            $0.append(entry)
+            if $0.count > 100 { $0.removeFirst() }
+        }
 
-        handler?(entry)
+        // Capture handler outside of lock to avoid potential issues
+        let capturedHandler = handler.withLock { $0 }
+        capturedHandler?(entry)
         print(message)
+
+        // Also write to file for crash debugging
+        writeToFile(entry)
     }
 
     func clear() {
-        lock.lock()
-        logs.removeAll()
-        lock.unlock()
+        logs.withLock { $0.removeAll() }
+    }
+
+    func setHandler(_ newHandler: ((String) -> Void)?) {
+        handler.withLock { $0 = newHandler }
+    }
+
+    func setLogFile(_ url: URL) {
+        logFile.withLock { $0 = url }
+    }
+
+    private func writeToFile(_ entry: String) {
+        guard let url = logFile.withLock({ $0 }) else { return }
+        let line = entry + "\n"
+        guard let data = line.data(using: .utf8) else { return }
+        // Append to file
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
     }
 }
 
-func debugLog(_ message: String) {
-    LogManager.shared.log(message)
+nonisolated func debugLog(_ message: String) {
+    MainActor.assumeIsolated {
+        LogManager.shared.log(message)
+    }
 }
