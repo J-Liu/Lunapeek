@@ -203,7 +203,9 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
 
         // Get format duration in microseconds (AV_TIME_BASE)
         duration = demuxer.getDuration()
-        debugLog("📋 Format duration: \(duration) microseconds (\(Double(duration) / Double(AV_TIME_BASE)) seconds)")
+        let durationSeconds = Double(duration) / Double(AV_TIME_BASE)
+        let durationMinutes = durationSeconds / 60
+        debugLog("📋 Format duration: \(duration) microseconds (\(durationSeconds) seconds, \(durationMinutes) minutes)")
 
         let streams = demuxer.getStreams()
         debugLog("📋 Found \(streams.count) streams")
@@ -214,7 +216,8 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
             if stream.isVideo && videoStreamIndex == nil {
                 videoStreamIndex = stream.index
                 videoTimebase = stream.timebase
-                debugLog("📺 Video stream: index=\(stream.index), timebase=\(stream.timebase.num)/\(stream.timebase.den)")
+                let streamDurationSec = Double(stream.duration) * Double(stream.timebase.num) / Double(stream.timebase.den)
+                debugLog("📺 Video stream: index=\(stream.index), stream_duration=\(stream.duration) (\(streamDurationSec) seconds), timebase=\(stream.timebase.num)/\(stream.timebase.den)")
 
                 // Check if codec needs software decoding (10-bit HEVC, VP9, etc.)
                 let needsSoftwareDecoding = Self.needsSoftwareDecoding(

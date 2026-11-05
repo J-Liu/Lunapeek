@@ -142,7 +142,26 @@ public final class LPDemuxer {
     /// Get duration in AV_TIME_BASE units (microseconds)
     public func getDuration() -> Int64 {
         guard let formatCtx = formatContext else { return 0 }
-        return formatCtx.pointee.duration
+
+        // Try container duration first
+        let containerDuration = formatCtx.pointee.duration
+
+        // If container duration is valid, use it
+        if containerDuration > 0 {
+            return containerDuration
+        }
+
+        // Fallback: check individual streams for duration
+        for stream in streams {
+            let streamDuration = stream.duration
+            if streamDuration > 0 {
+                // Convert from stream timebase to AV_TIME_BASE
+                let avTimebaseQ = AVRational(num: 1, den: Int32(AV_TIME_BASE))
+                return av_rescale_q(streamDuration, stream.timebase, avTimebaseQ)
+            }
+        }
+
+        return 0
     }
 
     /// Start reading packets
