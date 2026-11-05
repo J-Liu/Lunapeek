@@ -27,7 +27,14 @@ final class LogManager: @unchecked Sendable {
 
         // Capture handler outside of lock to avoid potential issues
         let capturedHandler = handler.withLock { $0 }
-        capturedHandler?(entry)
+
+        // Call handler on main queue to avoid threading issues
+        if let handler = capturedHandler {
+            DispatchQueue.main.async {
+                handler(entry)
+            }
+        }
+
         print(message)
 
         // Also write to file for crash debugging
