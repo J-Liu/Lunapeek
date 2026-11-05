@@ -20,7 +20,6 @@ final class PlayerViewController: UIViewController {
     private var avPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
     private var proxyServer: HTTPProxyServer?
-    private var remuxingProxyServer: RemuxingProxyServer?
     private var timeObserver: Any?
     private var videoView: UIView!
 
@@ -105,7 +104,6 @@ final class PlayerViewController: UIViewController {
         }
         // Stop proxy server
         proxyServer?.stop()
-        remuxingProxyServer?.stop()
         // Stop LPPlayerEngine
         lpPlayerEngine?.stop()
         lpVideoRenderer = nil
@@ -1194,58 +1192,6 @@ final class PlayerViewController: UIViewController {
 
     }
 
-    private func setupRemuxingPlayer() async {
-        log("🔄 Setting up remuxing player for: \(url.lastPathComponent)")
-
-        // Create a reader for the file
-        let fileName = url.lastPathComponent
-        let fileSize: Int64
-
-        do {
-            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-            fileSize = attributes[.size] as? Int64 ?? 0
-        } catch {
-            log("❌ Failed to get file size: \(error)")
-            showError(error)
-            return
-        }
-
-        // Create synchronous reader closure
-        let reader: (Int64, Int) throws -> Data = { [weak self] offset, length in
-            guard let self = self else { throw NSError(domain: "Cancelled", code: -1) }
-            let fileHandle = try FileHandle(forReadingFrom: self.url)
-            defer { try? fileHandle.close() }
-            try fileHandle.seek(toOffset: UInt64(offset))
-            let data = fileHandle.readData(ofLength: length)
-            return data
-        }
-
-        // Start remuxing proxy server
-        let proxy = RemuxingProxyServer()
-        remuxingProxyServer = proxy
-
-        do {
-            try await proxy.start(
-                fileName: fileName,
-                fileSize: fileSize,
-                reader: reader
-            )
-
-            guard let proxyURL = proxy.localURL else {
-                throw NSError(domain: "RemuxingError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get proxy URL"])
-            }
-
-            log("✅ Remuxing proxy started at: \(proxyURL)")
-
-            // Play from proxy URL
-            await setupAVPlayerWithURL(proxyURL)
-
-        } catch {
-            log("❌ Remuxing failed: \(error)")
-            showError(error)
-        }
-    }
-
     private func setupLPPlayer() async {
         log("🎬 Setting up LPPlayerEngine for: \(url.lastPathComponent)")
 
@@ -1855,8 +1801,6 @@ final class PlayerViewController: UIViewController {
         pipController = nil
         proxyServer?.stop()
         proxyServer = nil
-        remuxingProxyServer?.stop()
-        remuxingProxyServer = nil
         deactivateAudioSession()
 
         Task { [weak self] in
@@ -2014,10 +1958,10 @@ final class PlayerViewController: UIViewController {
         showSeekIndicator(seconds: targetTime)
     }
 
-    /// Get duration - use remuxed duration if available, otherwise use AVPlayer's duration
+    /// Get duration - use LPPlayerEngine or AVPlayer duration
     private func getDuration() -> Double {
-        if let proxy = remuxingProxyServer, proxy.duration > 0 {
-            return proxy.duration
+        if let engine = lpPlayerEngine, engine.duration > 0 {
+            return Double(engine.duration) / Double(AV_TIME_BASE)
         }
         return avQueuePlayer?.currentItem?.duration.seconds ?? 0
     }
