@@ -102,6 +102,7 @@ public final class FFmpegAudioDecoder: LPAudioDecoderProtocol {
 
     public func decode(packet: UnsafeMutablePointer<AVPacket>) -> Bool {
         guard let context = codecContext, let frame = frame, swrContext != nil else {
+            debugLog("❌ FFmpegAudio: No context/frame/swr")
             return false
         }
 
@@ -110,7 +111,8 @@ public final class FFmpegAudioDecoder: LPAudioDecoderProtocol {
         let sendRet = avcodec_send_packet(context, pkt)
         if sendRet < 0 && sendRet != AVERROR_EOF {
             if sendRet != -11 && sendRet != -35 {
-                debugLog("❌ FFmpegAudio: send_packet error: \(sendRet)")
+                debugLog("❌ FFmpegAudio: send_packet error: \(sendRet), size=\(packet.pointee.size)")
+                return false
             }
         }
 
@@ -132,13 +134,16 @@ public final class FFmpegAudioDecoder: LPAudioDecoderProtocol {
 
             // Convert to output format
             if let audioFrame = convertFrame(frame) {
+                debugLog("✅ FFmpegAudio: Frame decoded, pts=\(audioFrame.pts), samples=\(audioFrame.data.count / 4)")
                 onAudioDecoded?(audioFrame)
+            } else {
+                debugLog("❌ FFmpegAudio: Frame conversion failed")
             }
 
             av_frame_unref(frame)
         }
 
-        return true
+        return frameCount > 0
     }
 
     public func flush() {

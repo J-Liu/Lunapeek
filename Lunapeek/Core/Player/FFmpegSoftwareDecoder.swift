@@ -68,11 +68,13 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
 
     public func decode(packet: UnsafeMutablePointer<AVPacket>) -> Bool {
         guard let context = codecContext, let frame = frame else {
+            debugLog("❌ FFmpegSoft: No context or frame")
             return false
         }
 
         // Check if decoder is still valid
         guard context.pointee.codec != nil else {
+            debugLog("❌ FFmpegSoft: No codec")
             return false
         }
 
@@ -82,7 +84,8 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
         if sendRet < 0 && sendRet != AVERROR_EOF {
             // -11 (EAGAIN) or -35 means need to read output first
             if sendRet != -11 && sendRet != -35 {
-                debugLog("❌ FFmpegSoft: send_packet error: \(sendRet)")
+                debugLog("❌ FFmpegSoft: send_packet error: \(sendRet), size=\(packet.pointee.size)")
+                return false
             }
         }
 
@@ -105,13 +108,16 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
 
             // Convert frame to output format and deliver
             if let outputFrame = convertFrame(frame) {
+                debugLog("✅ FFmpegSoft: Frame decoded, pts=\(outputFrame.pts)")
                 onFrameDecoded?(outputFrame)
+            } else {
+                debugLog("❌ FFmpegSoft: Frame conversion failed")
             }
 
             av_frame_unref(frame)
         }
 
-        return true
+        return frameCount > 0
     }
 
     public func flush() {
