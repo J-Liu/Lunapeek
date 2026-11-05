@@ -141,7 +141,8 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         state = .paused
         onStateChanged?(.paused)
         isPlaying = false
-        demuxer?.stop()
+        // Don't stop demuxer - just stop rendering
+        // demuxer?.stop() would cause EOF on resume
     }
 
     /// Seek to timestamp
@@ -356,12 +357,14 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     // MARK: - Frame Handlers
 
     private func handleVideoFrame(_ frame: LPVideoFrame) {
+        // Only render when playing (not paused)
         guard isPlaying else { return }
         videoRenderer?(frame)
         currentTime = frame.pts
     }
 
     private func handleAudioFrame(_ frame: LPAudioFrame) {
+        // Only render when playing (not paused)
         guard isPlaying else { return }
         audioRenderer?(frame)
     }
