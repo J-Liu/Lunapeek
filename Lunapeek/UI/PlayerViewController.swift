@@ -1260,6 +1260,12 @@ final class PlayerViewController: UIViewController {
         engine.onStateChanged = { [weak self] state in
             DispatchQueue.main.async {
                 self?.handlePlayerStateChanged(state)
+                // Start audio renderer when playing
+                if state == .playing {
+                    self?.lpAudioRenderer?.play()
+                } else if state == .paused {
+                    self?.lpAudioRenderer?.pause()
+                }
             }
         }
 

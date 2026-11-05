@@ -15,6 +15,11 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
 
     private var codecContext: UnsafeMutablePointer<AVCodecContext>?
     private var frame: UnsafeMutablePointer<AVFrame>?
+    private var swsContext: UnsafeMutablePointer<SwsContext>?
+    private var dstFrame: UnsafeMutablePointer<AVFrame>?
+    private var lastWidth: Int32 = 0
+    private var lastHeight: Int32 = 0
+    private var lastFormat: AVPixelFormat = AV_PIX_FMT_NONE
 
     public init() {}
 
@@ -135,11 +140,26 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
             self.frame = nil
         }
 
+        if let dstFrame = dstFrame {
+            var dstPtr: UnsafeMutablePointer<AVFrame>? = dstFrame
+            av_frame_free(&dstPtr)
+            self.dstFrame = nil
+        }
+
+        if let swsContext = swsContext {
+            sws_freeContext(swsContext)
+            self.swsContext = nil
+        }
+
         if let context = codecContext {
             var ctxPtr: UnsafeMutablePointer<AVCodecContext>? = context
             avcodec_free_context(&ctxPtr)
             self.codecContext = nil
         }
+
+        lastWidth = 0
+        lastHeight = 0
+        lastFormat = AV_PIX_FMT_NONE
 
         debugLog("✅ FFmpegSoft: Closed")
     }
@@ -147,12 +167,93 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
     // MARK: - Private
 
     private func convertFrame(_ frame: UnsafeMutablePointer<AVFrame>) -> LPVideoFrame? {
-        let width = Int(frame.pointee.width)
-        let height = Int(frame.pointee.height)
+        let width = frame.pointee.width
+        let height = frame.pointee.height
         let format = AVPixelFormat(frame.pointee.format)
 
-        // Create CVPixelBuffer and copy data
-        guard let pixelBuffer = createPixelBufferFromFrame(frame, width: width, height: height, format: format) else {
+        // Check if we need swscale conversion (not NV12)
+        let needsConversion = format != AV_PIX_FMT_NV12
+
+        var srcFrame = frame
+
+        if needsConversion {
+            // Setup swscale context if needed
+            if width != lastWidth || height != lastHeight || format != lastFormat {
+                // Free old context
+                if let swsContext = swsContext {
+                    sws_freeContext(swsContext)
+                }
+                if let dstFrame = dstFrame {
+                    var dstPtr: UnsafeMutablePointer<AVFrame>? = dstFrame
+                    av_frame_free(&dstPtr)
+                }
+
+                // Create new swscale context for NV12 output
+                // SWS_BILINEAR = 4
+                swsContext = sws_getContext(
+                    width, height, format,
+                    width, height, AV_PIX_FMT_NV12,
+                    4, nil, nil, nil
+                )
+
+                // Allocate destination frame
+                dstFrame = av_frame_alloc()
+                if let dstFrame = dstFrame {
+                    dstFrame.pointee.width = width
+                    dstFrame.pointee.height = height
+                    dstFrame.pointee.format = Int32(AV_PIX_FMT_NV12.rawValue)
+                    av_frame_get_buffer(dstFrame, 0)
+                }
+
+                lastWidth = width
+                lastHeight = height
+                lastFormat = format
+            }
+
+            // Convert frame to NV12
+            guard let swsContext = swsContext, let dstFrame = dstFrame else {
+                debugLog("❌ FFmpegSoft: Failed to create swscale context")
+                return nil
+            }
+
+            // Prepare source data pointers
+            let srcData = frame.pointee.data
+            let srcLinesize = frame.pointee.linesize
+
+            // Convert using sws_scale
+            withUnsafePointer(to: srcData) { srcDataPtr in
+                srcDataPtr.withMemoryRebound(to: UnsafePointer<UInt8>?.self, capacity: 8) { srcDataArray in
+                    withUnsafePointer(to: srcLinesize) { srcLinesizePtr in
+                        srcLinesizePtr.withMemoryRebound(to: Int32.self, capacity: 8) { srcLinesizeArray in
+                            let dstData = dstFrame.pointee.data
+                            let dstLinesize = dstFrame.pointee.linesize
+
+                            withUnsafePointer(to: dstData) { dstDataPtr in
+                                dstDataPtr.withMemoryRebound(to: UnsafeMutablePointer<UInt8>?.self, capacity: 8) { dstDataArray in
+                                    withUnsafePointer(to: dstLinesize) { dstLinesizePtr in
+                                        dstLinesizePtr.withMemoryRebound(to: Int32.self, capacity: 8) { dstLinesizeArray in
+                                            _ = sws_scale(
+                                                swsContext,
+                                                srcDataArray,
+                                                srcLinesizeArray,
+                                                0, height,
+                                                dstDataArray,
+                                                dstLinesizeArray
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            srcFrame = dstFrame
+        }
+
+        // Create CVPixelBuffer from the frame
+        guard let pixelBuffer = createPixelBufferFromFrame(srcFrame, width: Int(width), height: Int(height)) else {
             debugLog("❌ FFmpegSoft: Failed to create pixel buffer")
             return nil
         }
@@ -174,8 +275,7 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
     private func createPixelBufferFromFrame(
         _ frame: UnsafeMutablePointer<AVFrame>,
         width: Int,
-        height: Int,
-        format: AVPixelFormat
+        height: Int
     ) -> CVPixelBuffer? {
         var pixelBuffer: CVPixelBuffer?
 
@@ -213,7 +313,7 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
                 memcpy(
                     yPlane.advanced(by: row * yStride),
                     srcY.advanced(by: row * srcYStride),
-                    min(srcYStride, yStride)
+                    min(width, yStride)
                 )
             }
         }
@@ -229,7 +329,7 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
                 memcpy(
                     uvPlane.advanced(by: row * uvStride),
                     srcUV.advanced(by: row * srcUVStride),
-                    min(srcUVStride, uvStride)
+                    min(width, uvStride)
                 )
             }
         }
