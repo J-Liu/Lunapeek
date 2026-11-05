@@ -132,7 +132,8 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 
         ioContext.bufferLock.lock()
         ioContext.outputBuffer.append(data)
-        let shouldFlush = ioContext.outputBuffer.count >= 65536
+        // Flush more frequently (every 32KB) for faster stream start
+        let shouldFlush = ioContext.outputBuffer.count >= 32768
         let dataToSend = shouldFlush ? ioContext.outputBuffer : nil
         if shouldFlush {
             ioContext.outputBuffer = Data()
@@ -258,10 +259,9 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         }
 
         // Create output format context
-        // Use MPEG-TS format which handles B-frames and streaming naturally
-        // MP4 requires monotonically increasing DTS which doesn't work with B-frames
+        // Use MP4 format which AVPlayer supports natively for progressive download
         var outputContext: UnsafeMutablePointer<AVFormatContext>?
-        guard avformat_alloc_output_context2(&outputContext, nil, "mpegts", nil) >= 0 else {
+        guard avformat_alloc_output_context2(&outputContext, nil, "mp4", nil) >= 0 else {
             cleanup()
             throw RemuxerError.failedToCreateOutput
         }
@@ -291,19 +291,18 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         }
         debugLog("🔄 setupStreams completed")
 
-        // Set MPEG-TS options for streaming playback
-        // These are needed for proper PAT/PMT/PCR insertion which AVPlayer requires
+        // Set MP4 options for fragmented streaming
+        // This allows streaming without knowing the final size
         var options: OpaquePointer?
         defer { av_dict_free(&options) }
 
-        // Ensure frequent PAT/PMT tables (needed for streaming)
-        // Default values are too infrequent for live streaming
-        av_dict_set(&options, "pat_period", "0.1", 0)  // PAT every 100ms
-        av_dict_set(&options, "pmt_period", "0.1", 0)  // PMT every 100ms
+        // Use fragmented MP4 for streaming - allows writing without seeking
+        // frag_discont allows discontinuous fragments for B-frames
+        av_dict_set(&options, "movflags", "frag_discont+empty_moov+default_base_moof", 0)
 
-        // Set PCR interval for proper timing (40ms is standard for DVB)
-        // PCR is critical for AVPlayer to synchronize playback
-        av_dict_set(&options, "pcr_interval", "40000", 0)  // 40ms in microseconds
+        // Fragment every 2 seconds for smooth streaming
+        av_dict_set(&options, "frag_duration", "2000000", 0)  // 2 seconds in microseconds
+        av_dict_set(&options, "min_frag_duration", "500000", 0)  // 0.5 seconds minimum
 
         // Write header
         debugLog("🔄 Writing header")
@@ -316,23 +315,8 @@ public final class FFmpegRemuxer: @unchecked Sendable {
         debugLog("🔄 Header written")
         flushOutputBuffer()
 
-        // Buffer packets to handle B-frames (DTS may not be monotonically increasing)
-        // We need to sort by DTS before writing to ensure valid MPEG-TS output
-        final class PacketWrapper {
-            let packet: UnsafeMutablePointer<AVPacket>
-            let dts: Int64
-            init(packet: UnsafeMutablePointer<AVPacket>, dts: Int64) {
-                self.packet = packet
-                self.dts = dts
-            }
-        }
-
-        var packetBuffer: [PacketWrapper] = []
-        let maxBufferSize = 32
-
-        // Track last DTS per stream to ensure monotonicity after sorting
-        var lastDts: [Int: Int64] = [:]
-
+        // Process packets - let av_interleaved_write_frame handle buffering and ordering
+        // The muxer with interleaved write will handle B-frame reordering automatically
         var packet = av_packet_alloc()
         defer { av_packet_free(&packet) }
 
@@ -381,71 +365,18 @@ public final class FFmpegRemuxer: @unchecked Sendable {
                 outStream.pointee.time_base
             )
 
-            // Copy packet to new allocation for buffering
-            let bufferedPacket = av_packet_alloc()
-            av_packet_ref(bufferedPacket, packet)
+            // Write packet - av_interleaved_write_frame handles buffering and ordering
+            var pkt: UnsafeMutablePointer<AVPacket>? = packet
+            let writeRet = av_interleaved_write_frame(outputContext, pkt)
+            if writeRet < 0 {
+                debugLog("🔄 Failed to write packet: \(writeRet)")
+            }
             av_packet_unref(packet)
 
-            // Store with rescaled DTS for sorting
-            let wrapper = PacketWrapper(packet: bufferedPacket!, dts: bufferedPacket!.pointee.dts)
-            packetBuffer.append(wrapper)
-
-            // Flush buffer when full - sort by DTS and write
-            if packetBuffer.count >= maxBufferSize {
-                // Sort by DTS (ascending)
-                packetBuffer.sort { $0.dts < $1.dts }
-
-                // Write sorted packets with DTS monotonicity enforcement
-                for wrapper in packetBuffer {
-                    let streamIdx = Int(wrapper.packet.pointee.stream_index)
-
-                    // Ensure DTS is monotonically increasing per stream
-                    var dts = wrapper.packet.pointee.dts
-                    if let last = lastDts[streamIdx], dts <= last {
-                        dts = last + 1
-                        wrapper.packet.pointee.dts = dts
-                        if wrapper.packet.pointee.pts <= dts {
-                            wrapper.packet.pointee.pts = dts
-                        }
-                    }
-                    lastDts[streamIdx] = dts
-
-                    var pkt: UnsafeMutablePointer<AVPacket>? = wrapper.packet
-                    let writeRet = av_interleaved_write_frame(outputContext, pkt)
-                    if writeRet < 0 {
-                        debugLog("🔄 Failed to write packet: \(writeRet), dts=\(dts)")
-                    }
-                    av_packet_free(&pkt)
-                }
-                packetBuffer.removeAll()
+            // Flush output buffer periodically
+            if packetCount % 100 == 0 {
                 flushOutputBuffer()
             }
-        }
-
-        // Flush remaining packets in buffer
-        if !packetBuffer.isEmpty {
-            packetBuffer.sort { $0.dts < $1.dts }
-            for wrapper in packetBuffer {
-                let streamIdx = Int(wrapper.packet.pointee.stream_index)
-                var dts = wrapper.packet.pointee.dts
-                if let last = lastDts[streamIdx], dts <= last {
-                    dts = last + 1
-                    wrapper.packet.pointee.dts = dts
-                    if wrapper.packet.pointee.pts <= dts {
-                        wrapper.packet.pointee.pts = dts
-                    }
-                }
-                lastDts[streamIdx] = dts
-
-                var pkt: UnsafeMutablePointer<AVPacket>? = wrapper.packet
-                let writeRet = av_interleaved_write_frame(outputContext, pkt)
-                if writeRet < 0 {
-                    debugLog("🔄 Failed to write packet: \(writeRet), dts=\(dts)")
-                }
-                av_packet_free(&pkt)
-            }
-            packetBuffer.removeAll()
-            flushOutputBuffer()
         }
 
         // Write trailer
@@ -469,7 +400,8 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             guard let codecParams = inStream.pointee.codecpar else { continue }
 
             let codecId = codecParams.pointee.codec_id
-            debugLog("🔄 Stream \(i): codec_id=\(codecId)")
+            let codecType = codecParams.pointee.codec_type
+            debugLog("🔄 Stream \(i): type=\(codecType.rawValue), codec_id=\(codecId.rawValue)")
 
             // Skip unknown codecs
             if codecId == AV_CODEC_ID_NONE {
@@ -477,18 +409,28 @@ public final class FFmpegRemuxer: @unchecked Sendable {
                 continue
             }
 
-            // Skip codecs not supported in MP4 container
-            // subrip = 94225, ssa/ass = 94223-94224, webvtt = 86018, etc.
-            if codecId == AV_CODEC_ID_SUBRIP || codecId == AV_CODEC_ID_SSA || codecId == AV_CODEC_ID_ASS || codecId == AV_CODEC_ID_WEBVTT {
-                debugLog("🔄 Skipping unsupported subtitle codec \(codecId)")
-                streamMapping[i] = -1
-                continue
+            // Check if codec is supported by AVPlayer
+            var isSupported = false
+
+            if codecType == AVMEDIA_TYPE_VIDEO {
+                // AVPlayer supports H.264 and H.265 (8-bit)
+                // Note: 10-bit HEVC requires software decoder
+                isSupported = codecId == AV_CODEC_ID_H264 || codecId == AV_CODEC_ID_HEVC
+                debugLog("🔄 Video codec \(codecId.rawValue): \(isSupported ? "supported" : "NOT supported")")
+            } else if codecType == AVMEDIA_TYPE_AUDIO {
+                // AVPlayer supports AAC, AC-3, MP3
+                // DTS, EAC-3, FLAC, Opus, Vorbis require software decoder
+                isSupported = codecId == AV_CODEC_ID_AAC ||
+                              codecId == AV_CODEC_ID_AC3 ||
+                              codecId == AV_CODEC_ID_MP3
+                debugLog("🔄 Audio codec \(codecId.rawValue): \(isSupported ? "supported" : "NOT supported")")
+            } else {
+                // Skip subtitles and other streams
+                debugLog("🔄 Skipping non-video/audio stream (type=\(codecType.rawValue))")
+                isSupported = false
             }
 
-            // Skip EAC3 (Enhanced AC-3) - requires packet parsing before header write
-            // which is not compatible with streaming remuxing
-            if codecId == AV_CODEC_ID_EAC3 {
-                debugLog("🔄 Skipping EAC3 audio (not compatible with streaming remuxing)")
+            if !isSupported {
                 streamMapping[i] = -1
                 continue
             }
@@ -501,16 +443,6 @@ public final class FFmpegRemuxer: @unchecked Sendable {
             guard avcodec_parameters_copy(outStream!.pointee.codecpar, codecParams) >= 0 else {
                 return false
             }
-
-            // Fix codec tag for HEVC
-            if codecId == AV_CODEC_ID_HEVC {
-                outStream?.pointee.codecpar?.pointee.codec_tag = MKTAG("h".utf8.first!, "v".utf8.first!, "c".utf8.first!, "1".utf8.first!)
-            }
-
-            // MPEG-TS has a fixed 90kHz timebase (1/90000)
-            // FFmpeg's MPEG-TS muxer sets this automatically, don't override
-            // The muxer will rescale timestamps internally
-            // outStream!.pointee.time_base is set by avformat_new_stream
 
             streamMapping[i] = Int(outStream!.pointee.index)
             debugLog("🔄 Mapped stream \(i) -> \(streamMapping[i]!)")
@@ -568,10 +500,6 @@ public final class FFmpegRemuxer: @unchecked Sendable {
 }
 
 // MARK: - Helpers
-
-private func MKTAG(_ a: UInt8, _ b: UInt8, _ c: UInt8, _ d: UInt8) -> UInt32 {
-    return UInt32(a) | (UInt32(b) << 8) | (UInt32(c) << 16) | (UInt32(d) << 24)
-}
 
 private let AVERROR_EOF: Int32 = -541478725
 

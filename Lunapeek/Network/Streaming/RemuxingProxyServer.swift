@@ -34,7 +34,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
     var localURL: URL? {
         let port = _port.withLock { $0 }
         guard port > 0 else { return nil }
-        return URL(string: "http://127.0.0.1:\(port)/remuxed.ts")
+        return URL(string: "http://127.0.0.1:\(port)/remuxed.mp4")
     }
 
     private func log(_ message: String) {
@@ -355,7 +355,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
                 statusCode: 200,
                 contentLength: currentSize,
                 acceptRanges: "bytes",
-                contentType: "video/mp2t"
+                contentType: "video/mp4"
             )
             sendResponse(connection: connection, headers: headers)
             completion()
@@ -387,7 +387,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
                 statusCode: 206,
                 contentLength: contentLength,
                 acceptRanges: "bytes",
-                contentType: "video/mp2t",
+                contentType: "video/mp4",
                 contentRange: contentRange
             )
         } else {
@@ -395,7 +395,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
                 statusCode: 200,
                 contentLength: currentSize,
                 acceptRanges: "bytes",
-                contentType: "video/mp2t"
+                contentType: "video/mp4"
             )
         }
 
