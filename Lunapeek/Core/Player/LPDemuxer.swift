@@ -42,8 +42,13 @@ public final class LPDemuxer {
     private var streams: [LPStreamInfo] = []
     private var isRunning = false
     private var isReading = false  // Track if read loop is active
+    private var isStopping = false  // Track if we're in stop() to prevent callbacks
     private let queue = DispatchQueue(label: "com.lunapeek.demuxer", qos: .userInitiated)
     private weak var delegate: LPDemuxerDelegate?
+
+    // Seek validation
+    private var expectedSeekPts: Int64?  // Expected position after seek (in AV_TIME_BASE)
+    private var isSeeking = false  // Track if we're in seek mode
 
     public init() {}
 
@@ -167,16 +172,26 @@ public final class LPDemuxer {
     /// Start reading packets
     public func start() {
         guard let formatCtx = formatContext else { return }
+
+        // Only start if not already running
+        guard !isRunning else {
+            debugLog("📋 Demuxer: start() called but already running, skipping")
+            return
+        }
+
         debugLog("📋 Demuxer: start() called, setting isRunning=true")
         isRunning = true
 
         queue.async { [weak self] in
-            self?.readPackets(formatCtx)
+            guard let self = self else { return }
+            self.readPackets(formatCtx)
         }
     }
 
     /// Stop reading
     public func stop() {
+        debugLog("📋 Demuxer: stop() called, setting isRunning=false")
+        isStopping = true  // Prevent callbacks during stop
         isRunning = false
         // Wait for read loop to finish (max 100ms)
         var waitCount = 0
@@ -184,21 +199,78 @@ public final class LPDemuxer {
             Thread.sleep(forTimeInterval: 0.01)
             waitCount += 1
         }
+        if isReading {
+            debugLog("📋 Demuxer: stop() - read loop still active after 100ms")
+        }
+        isStopping = false  // Allow callbacks again
     }
 
     /// Seek to timestamp
     public func seek(to timestamp: Int64, streamIndex: Int? = nil) -> Bool {
         guard let formatCtx = formatContext else { return false }
 
-        let flags: Int32 = AVSEEK_FLAG_BACKWARD
-        let streamIdx = streamIndex ?? -1
+        // Store expected seek position for validation in readPackets
+        expectedSeekPts = timestamp
+        isSeeking = true
 
-        let result = av_seek_frame(formatCtx, Int32(streamIdx), timestamp, flags)
-        if result < 0 {
-            debugLog("⚠️ Demuxer: Seek failed, error: \(result)")
-            return false
+        // Determine which stream to use for seeking
+        var streamIdx = streamIndex
+        if streamIdx == nil {
+            // Find first video stream
+            for stream in streams {
+                if stream.isVideo {
+                    streamIdx = stream.index
+                    break
+                }
+            }
         }
 
+        let finalStreamIdx = streamIdx ?? -1
+
+        // Log timestamp - if streamIdx is specified, timestamp is in stream timebase
+        // otherwise it's in AV_TIME_BASE
+        if let idx = streamIdx, let stream = streams.first(where: { $0.index == idx }) {
+            // Timestamp is in stream timebase - convert to seconds
+            let timestampSec = Double(timestamp) * Double(stream.timebase.num) / Double(stream.timebase.den)
+            debugLog("📋 Demuxer: Seeking to \(timestampSec) seconds (ts=\(timestamp), stream=\(finalStreamIdx), timebase=\(stream.timebase.num)/\(stream.timebase.den))")
+        } else {
+            // Timestamp is in AV_TIME_BASE
+            let timestampSec = Double(timestamp) / Double(AV_TIME_BASE)
+            debugLog("📋 Demuxer: Seeking to \(timestampSec) seconds (ts=\(timestamp), stream=\(finalStreamIdx), timebase=AV_TIME_BASE)")
+        }
+
+        // Use avformat_seek_file instead of av_seek_frame for more robust seeking
+        // This allows specifying a range, which helps with corrupt MKV Cues
+        // Tolerance: 5 seconds in the appropriate timebase
+        let tolerance: Int64
+        if streamIdx != nil, let stream = streams.first(where: { $0.index == streamIdx! }) {
+            // Convert 5 seconds to stream timebase
+            tolerance = 5 * Int64(stream.timebase.den) / Int64(stream.timebase.num)
+        } else {
+            // 5 seconds in AV_TIME_BASE (microseconds)
+            tolerance = 5 * Int64(AV_TIME_BASE)
+        }
+
+        let minTs = max(0, timestamp - tolerance)
+        let maxTs = timestamp + tolerance
+
+        // AVSEEK_FLAG_BACKWARD: seek to nearest keyframe before target
+        let flags: Int32 = AVSEEK_FLAG_BACKWARD
+
+        let result = avformat_seek_file(formatCtx, Int32(finalStreamIdx), minTs, timestamp, maxTs, flags)
+        if result < 0 {
+            debugLog("⚠️ Demuxer: avformat_seek_file failed, error: \(result), trying av_seek_frame fallback")
+
+            // Fallback to simple av_seek_frame
+            let fallbackResult = av_seek_frame(formatCtx, Int32(finalStreamIdx), timestamp, flags)
+            if fallbackResult < 0 {
+                debugLog("⚠️ Demuxer: av_seek_frame also failed, error: \(fallbackResult)")
+                expectedSeekPts = nil
+                return false
+            }
+        }
+
+        debugLog("✅ Demuxer: Seek succeeded")
         return true
     }
 
@@ -292,6 +364,9 @@ public final class LPDemuxer {
 
         var packet = AVPacket()
         var packetCount = 0
+        var lastPts: Int64 = -1  // Track last PTS to detect unexpected jumps
+        var seekValidationDone = false  // Only validate first packet after seek
+        let seekToleranceSec: Double = 10.0  // Allow 10 second tolerance for seek validation
 
         debugLog("📋 Demuxer: Starting read loop, isRunning=\(isRunning)")
 
@@ -299,28 +374,72 @@ public final class LPDemuxer {
             let result = av_read_frame(formatCtx, &packet)
 
             if result < 0 {
-                if result == LP_AVERROR_EOF {
-                    debugLog("📋 Demuxer: Reached EOF after \(packetCount) packets")
+                if result == LP_AVERROR_EOF && !isStopping {
+                    // Log final position when reaching EOF
+                    if lastPts >= 0 {
+                        let duration = formatCtx.pointee.duration
+                        let lastPtsSec = Double(lastPts) / Double(AV_TIME_BASE)
+                        let durationSec = Double(duration) / Double(AV_TIME_BASE)
+                        debugLog("📋 Demuxer: Reached EOF at \(lastPtsSec) seconds (expected \(durationSec) seconds) after \(packetCount) packets")
+                    }
                     delegate?.demuxerDidComplete(error: nil)
-                } else {
+                } else if result != LP_AVERROR_EOF {
                     debugLog("📋 Demuxer: Read error \(result) after \(packetCount) packets")
-                    let error = NSError(domain: "DemuxerError", code: Int(result), userInfo: nil)
-                    delegate?.demuxerDidComplete(error: error)
+                    if !isStopping {
+                        let error = NSError(domain: "DemuxerError", code: Int(result), userInfo: nil)
+                        delegate?.demuxerDidComplete(error: error)
+                    }
                 }
                 break
             }
 
             packetCount += 1
 
-            // Notify delegate with packet
-            let streamIndex = Int(packet.stream_index)
-            delegate?.demuxerDidReadPacket(&packet, streamIndex: streamIndex)
+            // Get packet PTS in AV_TIME_BASE for consistency
+            let streamIdx = Int(packet.stream_index)
+            let ptsInAvTimebase: Int64
+            if let stream = streams.first(where: { $0.index == streamIdx }) {
+                ptsInAvTimebase = av_rescale_q(packet.pts, stream.timebase, AVRational(num: 1, den: Int32(AV_TIME_BASE)))
+            } else {
+                ptsInAvTimebase = packet.pts
+            }
 
-            // Update progress
+            // Validate seek position on first packet
+            if !seekValidationDone, let expectedPts = expectedSeekPts, isSeeking {
+                let expectedSec = Double(expectedPts) / Double(AV_TIME_BASE)
+                let actualSec = Double(ptsInAvTimebase) / Double(AV_TIME_BASE)
+                let diff = abs(actualSec - expectedSec)
+
+                if diff > seekToleranceSec {
+                    debugLog("⚠️ Demuxer: Seek validation failed - expected \(expectedSec)s, got \(actualSec)s (diff \(diff)s)")
+                } else {
+                    debugLog("✅ Demuxer: Seek validation passed - expected \(expectedSec)s, got \(actualSec)s")
+                }
+                seekValidationDone = true
+                isSeeking = false  // Clear seeking flag after validation
+                expectedSeekPts = nil
+            }
+
+            // Detect unexpected PTS jumps (possible corrupt Cues)
+            if lastPts >= 0 {
+                let jump = abs(ptsInAvTimebase - lastPts)
+                let jumpSec = Double(jump) / Double(AV_TIME_BASE)
+                if jumpSec > 60.0 {  // More than 60 seconds jump
+                    debugLog("⚠️ Demuxer: Unexpected PTS jump from \(Double(lastPts) / Double(AV_TIME_BASE))s to \(Double(ptsInAvTimebase) / Double(AV_TIME_BASE))s (\(jumpSec)s gap)")
+                }
+            }
+            lastPts = ptsInAvTimebase
+
+            // Notify delegate with packet - skip if stopping
+            if !isStopping {
+                let streamIndex = Int(packet.stream_index)
+                delegate?.demuxerDidReadPacket(&packet, streamIndex: streamIndex)
+            }
+
+            // Update progress using AV_TIME_BASE consistent values
             let duration = formatCtx.pointee.duration
             if duration > 0 {
-                let pts = packet.pts
-                let progress = Double(pts) / Double(duration)
+                let progress = Double(ptsInAvTimebase) / Double(duration)
                 delegate?.demuxerDidUpdateProgress(progress)
             }
 
