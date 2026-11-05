@@ -69,7 +69,7 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
 
         currentPacket = packet
 
-        var outputBufferSize: UInt32 = 8192
+        let outputBufferSize: UInt32 = 8192
         var outputBuffer = Data(count: Int(outputBufferSize))
         var frames: UInt32 = 4096
         var decodeStatus: OSStatus = noErr
@@ -120,7 +120,7 @@ public final class AudioToolboxDecoderPlugin: AudioDecoderPlugin {
         }
 
         let bufferSize = min(UInt32(packet.data.count), ioDataSize.pointee)
-        packet.data.withUnsafeBytes { bytes in
+        _ = packet.data.withUnsafeBytes { bytes in
             memcpy(ioData.pointee.mBuffers.mData, bytes.baseAddress, Int(bufferSize))
         }
 

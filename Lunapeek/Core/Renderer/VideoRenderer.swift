@@ -71,7 +71,7 @@ public final class VideoRenderer {
             decodeTimeStamp: .invalid
         )
 
-        var status = CMSampleBufferCreateForImageBuffer(
+        let status = CMSampleBufferCreateForImageBuffer(
             allocator: kCFAllocatorDefault,
             imageBuffer: frame.pixelBuffer,
             dataReady: true,
@@ -86,7 +86,7 @@ public final class VideoRenderer {
             return
         }
 
-        displayLayer.enqueue(sampleBuffer)
+        displayLayer.sampleBufferRenderer.enqueue(sampleBuffer)
     }
 
     private func createFormatDescription(for pixelBuffer: CVPixelBuffer) -> CMFormatDescription? {
@@ -100,7 +100,7 @@ public final class VideoRenderer {
     }
 
     public func flush() {
-        displayLayer.flushAndRemoveImage()
+        displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: false, completionHandler: nil)
     }
 
     public func reset() {

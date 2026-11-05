@@ -20,16 +20,11 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
         await close()
         currentURL = url
 
-        let asset = AVAsset(url: url)
+        let asset = AVURLAsset(url: url)
         self.asset = asset
 
-        try await asset.loadValues(forKeys: ["tracks", "duration"])
-
-        var error: NSError?
-        let status = asset.statusOfValue(forKey: "tracks", error: &error)
-        guard status == .loaded else {
-            throw DemuxerError.failedToLoadTracks
-        }
+        // Load required properties asynchronously
+        _ = try await asset.load(.tracks, .duration)
 
         let reader = try AVAssetReader(asset: asset)
         assetReader = reader
@@ -38,9 +33,6 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
         let tracks = try await asset.loadTracks(withMediaCharacteristic: .visual)
 
         for (index, track) in tracks.enumerated() {
-            let settings: [String: Any] = [
-                AVURLAssetPreferPreciseDurationAndTimingKey: true
-            ]
             let output = AVAssetReaderTrackOutput(
                 track: track,
                 outputSettings: nil
@@ -83,16 +75,13 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
     }
 
     private func buildStreamInfo(for track: AVAssetTrack, index: Int, codecType: CodecType) async throws -> StreamInfo {
-        // Load track properties using string keys to avoid static member lookup conflict
-        try await track.loadValues(forKeys: ["timeRange", "formatDescriptions"])
-
-        // Use timeRange.duration since duration property is unavailable in Swift
-        let timeRange = track.timeRange
+        // Load track properties using the new async load API
+        let timeRange = try await track.load(.timeRange)
         let duration = timeRange.duration
 
         var formatDescription: MediaFormatDescription?
-        // formatDescriptions returns [Any], need to cast
-        let formatDescriptions = track.formatDescriptions as? [CMFormatDescription] ?? []
+        // Load format descriptions using the new async API
+        let formatDescriptions = try await track.load(.formatDescriptions)
 
         if let desc = formatDescriptions.first {
             formatDescription = buildFormatDescription(from: desc, codecType: codecType)
@@ -113,7 +102,6 @@ public final class SystemDemuxerPlugin: DemuxerPlugin {
     private func buildFormatDescription(from desc: CMFormatDescription, codecType: CodecType) -> MediaFormatDescription {
         let codecTypeStr = String(fourCharCode: CMFormatDescriptionGetMediaSubType(desc))
         let codecId = CMFormatDescriptionGetMediaSubType(desc)
-        let extensions = CMFormatDescriptionGetExtensions(desc) as? [String: Any]
 
         var videoProps: VideoFormatProperties?
         var audioProps: AudioFormatProperties?

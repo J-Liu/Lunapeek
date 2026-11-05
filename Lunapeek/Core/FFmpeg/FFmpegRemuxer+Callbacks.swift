@@ -12,7 +12,7 @@ public func swiftReadCallback(_ swiftContext: UnsafeMutableRawPointer?, _ buf: U
     guard let context = swiftContext else { return -1 }
     let remuxer = Unmanaged<FFmpegRemuxer>.fromOpaque(context).takeUnretainedValue()
     guard let buffer = buf else { return -1 }
-    return remuxer.handleRead(buf: buffer, size: Int(size))
+    return Int32(remuxer.handleRead(buf: buffer, size: Int(size)))
 }
 
 @_cdecl("swiftWriteCallback")
@@ -20,7 +20,7 @@ public func swiftWriteCallback(_ swiftContext: UnsafeMutableRawPointer?, _ buf: 
     guard let context = swiftContext else { return -1 }
     let remuxer = Unmanaged<FFmpegRemuxer>.fromOpaque(context).takeUnretainedValue()
     guard let buffer = buf else { return -1 }
-    return remuxer.handleWrite(buf: buffer, size: Int(size))
+    return Int32(remuxer.handleWrite(buf: buffer, size: Int(size)))
 }
 
 @_cdecl("swiftSeekCallback")

@@ -5,38 +5,36 @@
 
 import Foundation
 import Network
+import os
 
 /// HTTP proxy server that remuxes MKV/WebM/AVI to MP4 on-the-fly.
 /// Used for both local and network files that need format conversion.
 final class RemuxingProxyServer: @unchecked Sendable {
     private var listener: NWListener?
-    private var _port: UInt16 = 0
+    private var _port: OSAllocatedUnfairLock<UInt16> = OSAllocatedUnfairLock(initialState: 0)
     private let queue = DispatchQueue(label: "com.lunapeek.remux-proxy")
-    private let portLock = NSLock()
     private var isRunning = false
 
     // Active connections
-    private var activeConnections: [NWConnection] = []
-    private let connectionsLock = NSLock()
+    private var activeConnections: OSAllocatedUnfairLock<[NWConnection]> = OSAllocatedUnfairLock(initialState: [])
 
     // Data source
     private var fileName: String = ""
     private var fileSize: Int64 = 0
-    private var dataReader: ((Int64, Int) async throws -> Data)?
+    private var dataReader: ((Int64, Int) throws -> Data)?  // Synchronous
     private var logHandler: ((String) -> Void)?
 
     // Remuxer
     private var remuxer: FFmpegRemuxer?
-    private var remuxedData = Data()
-    private let remuxLock = NSLock()
-    private var remuxCompleted = false
-    private var remuxError: Error?
+    private var remuxerDelegate: RemuxingDelegate?
+    private var remuxedData: OSAllocatedUnfairLock<Data> = OSAllocatedUnfairLock(initialState: Data())
+    private var remuxCompleted: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: false)
+    private var remuxError: OSAllocatedUnfairLock<Error?> = OSAllocatedUnfairLock(initialState: nil)
 
     var localURL: URL? {
-        portLock.lock()
-        defer { portLock.unlock() }
-        guard _port > 0 else { return nil }
-        return URL(string: "http://127.0.0.1:\(_port)/remuxed.mp4")
+        let port = _port.withLock { $0 }
+        guard port > 0 else { return nil }
+        return URL(string: "http://127.0.0.1:\(port)/remuxed.ts")
     }
 
     private func log(_ message: String) {
@@ -47,12 +45,12 @@ final class RemuxingProxyServer: @unchecked Sendable {
     /// - Parameters:
     ///   - fileName: Original file name
     ///   - fileSize: Total file size
-    ///   - reader: Async function to read data from offset
+    ///   - reader: Synchronous function to read data from offset
     ///   - logHandler: Optional callback for log messages
     func start(
         fileName: String,
         fileSize: Int64,
-        reader: @escaping (Int64, Int) async throws -> Data,
+        reader: @escaping (Int64, Int) throws -> Data,
         logHandler: ((String) -> Void)? = nil
     ) async throws {
         self.fileName = fileName
@@ -69,24 +67,23 @@ final class RemuxingProxyServer: @unchecked Sendable {
 
         listener = try NWListener(using: parameters, on: .any)
         let weakListener = listener
-        listener?.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
+        let weakPort = _port
+        listener?.stateUpdateHandler = { state in
             switch state {
             case .ready:
                 if let port = weakListener?.port?.rawValue {
-                    self.portLock.lock()
-                    self._port = port
-                    self.portLock.unlock()
-                    self.log("Server started on port \(port)")
+                    weakPort.withLock { $0 = port }
+                    debugLog("🔄 ===== SERVER READY on port \(port) =====")
                 }
             case .failed(let error):
-                self.log("Server failed: \(error)")
+                debugLog("🔄 Server failed: \(error)")
             default:
                 break
             }
         }
 
         listener?.newConnectionHandler = { [weak self] connection in
+            debugLog("🔄 New connection received")
             self?.handleConnection(connection)
         }
 
@@ -95,12 +92,33 @@ final class RemuxingProxyServer: @unchecked Sendable {
 
         // Wait for server to be ready
         while true {
-            portLock.lock()
-            let currentPort = _port
-            portLock.unlock()
+            let currentPort = _port.withLock { $0 }
             if currentPort > 0 { break }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
+
+        // Wait for remuxer to generate initial data (at least 50KB)
+        // This ensures AVPlayer gets data immediately on first request
+        debugLog("🔄 Waiting for remuxer to generate initial data")
+        let minInitialData: Int64 = 50 * 1024  // 50KB
+        var waitAttempts = 0
+        let maxWaitAttempts = 100  // 10 seconds max
+
+        while getRemuxedSize() < minInitialData && !isRemuxComplete() && waitAttempts < maxWaitAttempts {
+            try await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+            waitAttempts += 1
+            if waitAttempts % 10 == 0 {
+                debugLog("🔄 Remuxer progress: \(getRemuxedSize()) bytes, waiting...")
+            }
+        }
+
+        if let error = remuxError.withLock({ $0 }) {
+            debugLog("🔄 Remuxer failed during startup: \(error)")
+            throw error
+        }
+
+        let dataSize = getRemuxedSize()
+        debugLog("🔄 Remuxer ready with \(dataSize) bytes after \(waitAttempts * 100)ms")
     }
 
     func stop() {
@@ -109,12 +127,14 @@ final class RemuxingProxyServer: @unchecked Sendable {
         // Stop remuxer
         remuxer?.stop()
         remuxer = nil
+        remuxerDelegate = nil
 
         // Cancel all connections
-        connectionsLock.lock()
-        let connections = activeConnections
-        activeConnections.removeAll()
-        connectionsLock.unlock()
+        let connections = activeConnections.withLock {
+            let conns = $0
+            $0.removeAll()
+            return conns
+        }
 
         for connection in connections {
             connection.cancel()
@@ -122,9 +142,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
 
         listener?.cancel()
         listener = nil
-        portLock.lock()
-        _port = 0
-        portLock.unlock()
+        _port.withLock { $0 = 0 }
         dataReader = nil
     }
 
@@ -133,14 +151,12 @@ final class RemuxingProxyServer: @unchecked Sendable {
 
         remuxer = FFmpegRemuxer()
 
-        // Create delegate to collect remuxed data
-        let delegate = RemuxingDelegate { [weak self] data in
+        // Create delegate to collect remuxed data - MUST store it to prevent deallocation
+        remuxerDelegate = RemuxingDelegate { [weak self] data in
             self?.appendRemuxedData(data)
         } onComplete: { [weak self] error in
-            self?.remuxLock.lock()
-            self?.remuxCompleted = true
-            self?.remuxError = error
-            self?.remuxLock.unlock()
+            self?.remuxCompleted.withLock { $0 = true }
+            self?.remuxError.withLock { $0 = error }
             if let error = error {
                 self?.log("Remux failed: \(error)")
             } else {
@@ -153,42 +169,35 @@ final class RemuxingProxyServer: @unchecked Sendable {
             fileName: fileName,
             fileSize: fileSize,
             readCallback: reader,
-            delegate: delegate
+            delegate: remuxerDelegate!
         )
     }
 
     private func appendRemuxedData(_ data: Data) {
-        remuxLock.lock()
-        remuxedData.append(data)
-        remuxLock.unlock()
+        let oldSize = remuxedData.withLock { $0.count }
+        remuxedData.withLock { $0.append(data) }
+        let newSize = remuxedData.withLock { $0.count }
+        debugLog("🔄 appendRemuxedData: \(oldSize) -> \(newSize) bytes")
     }
 
     private func getRemuxedData(at offset: Int64, length: Int) -> Data {
-        remuxLock.lock()
-        let totalSize = remuxedData.count
-        guard offset < totalSize else {
-            remuxLock.unlock()
-            return Data()
+        remuxedData.withLock { buffer in
+            let totalSize = buffer.count
+            guard offset < totalSize else {
+                return Data()
+            }
+            let start = Int(offset)
+            let end = min(start + length, totalSize)
+            return buffer.subdata(in: start..<end)
         }
-        let start = Int(offset)
-        let end = min(start + length, totalSize)
-        let data = remuxedData.subdata(in: start..<end)
-        remuxLock.unlock()
-        return data
     }
 
     private func getRemuxedSize() -> Int64 {
-        remuxLock.lock()
-        let size = Int64(remuxedData.count)
-        remuxLock.unlock()
-        return size
+        Int64(remuxedData.withLock { $0.count })
     }
 
     private func isRemuxComplete() -> Bool {
-        remuxLock.lock()
-        let complete = remuxCompleted
-        remuxLock.unlock()
-        return complete
+        remuxCompleted.withLock { $0 }
     }
 
     private func restartRemuxer(atOffset offset: Int64) async {
@@ -196,11 +205,9 @@ final class RemuxingProxyServer: @unchecked Sendable {
         remuxer?.stop()
 
         // Clear buffer
-        remuxLock.lock()
-        remuxedData = Data()
-        remuxCompleted = false
-        remuxError = nil
-        remuxLock.unlock()
+        remuxedData.withLock { $0 = Data() }
+        remuxCompleted.withLock { $0 = false }
+        remuxError.withLock { $0 = nil }
 
         // Restart remuxer
         await startRemuxer()
@@ -213,37 +220,27 @@ final class RemuxingProxyServer: @unchecked Sendable {
         }
     }
 
-    private func handleConnection(_ connection: NWConnection) {
-        guard isRunning else {
-            connection.cancel()
-            return
-        }
-
-        connectionsLock.lock()
-        activeConnections.append(connection)
-        connectionsLock.unlock()
-
+    private nonisolated func handleConnection(_ connection: NWConnection) {
+        debugLog("🔄 handleConnection: new connection")
         connection.start(queue: queue)
         readNextRequest(connection: connection)
     }
 
-    private func readNextRequest(connection: NWConnection) {
+    private nonisolated func readNextRequest(connection: NWConnection) {
+        debugLog("🔄 readNextRequest: waiting for data")
         var buffer = Data()
 
         func receiveLoop() {
             connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, isComplete, error in
-                guard let self else {
-                    connection.cancel()
-                    return
-                }
-
                 if let data = data, !data.isEmpty {
+                    debugLog("🔄 readNextRequest: received \(data.count) bytes")
                     buffer.append(data)
 
                     if let requestString = String(data: buffer, encoding: .utf8),
                        requestString.contains("\r\n\r\n") {
-                        self.handleRequest(requestString, connection: connection) {
-                            self.readNextRequest(connection: connection)
+                        debugLog("🔄 readNextRequest: complete request received")
+                        self?.handleRequest(requestString, connection: connection) {
+                            self?.readNextRequest(connection: connection)
                         }
                         return
                     }
@@ -252,6 +249,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
                 }
 
                 if isComplete || error != nil {
+                    debugLog("🔄 readNextRequest: connection closed, isComplete=\(isComplete), error=\(error?.localizedDescription ?? "none")")
                     connection.cancel()
                 }
             }
@@ -260,13 +258,9 @@ final class RemuxingProxyServer: @unchecked Sendable {
         receiveLoop()
     }
 
-    private func handleRequest(_ request: String, connection: NWConnection, completion: @escaping () -> Void) {
-        guard isRunning else {
-            connection.cancel()
-            return
-        }
-
-        log("Request: \(request.prefix(200))")
+    private nonisolated func handleRequest(_ request: String, connection: NWConnection, completion: @escaping () -> Void) {
+        debugLog("🔄 ========== HTTP REQUEST ==========")
+        debugLog("🔄 \(request.prefix(200))")
 
         let lines = request.split(separator: "\r\n")
         guard let requestLine = lines.first else {
@@ -302,80 +296,104 @@ final class RemuxingProxyServer: @unchecked Sendable {
             }
         }
 
-        Task { [weak self] in
-            guard let self else {
-                connection.cancel()
-                return
-            }
-
-            // For seek requests (large range jumps), we may need to restart remuxing
-            if isRangeRequest && rangeStart > self.getRemuxedSize() + 1048576 {
-                // Seek request beyond current buffer - restart remuxing from new position
-                self.log("Seek request to \(rangeStart), restarting remux")
-                await self.restartRemuxer(atOffset: rangeStart)
-            }
-
-            // Wait for data to be available at requested position
-            var attempts = 0
-            while self.getRemuxedSize() < rangeStart + 65536 && !self.isRemuxComplete() && attempts < 100 {
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                attempts += 1
-            }
-
-            let currentSize = self.getRemuxedSize()
-
-            if method == "HEAD" {
-                let headers = self.buildHeaders(
-                    statusCode: 200,
-                    contentLength: currentSize,
-                    acceptRanges: "bytes",
-                    contentType: "video/mp4"
-                )
-                self.sendResponse(connection: connection, headers: headers)
-                completion()
-                return
-            }
-
-            // Calculate actual range end
-            let actualEndOffset = min(rangeEnd, currentSize - 1)
-            let contentLength = max(0, actualEndOffset - rangeStart + 1)
-
-            guard contentLength > 0 else {
-                // No data yet, wait and retry
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                self.sendError(connection: connection, code: 503, message: "Service Unavailable")
-                completion()
-                return
-            }
-
-            let data = self.getRemuxedData(at: rangeStart, length: Int(contentLength))
-            let endOffset = rangeStart + contentLength - 1
-
-            let headers: String
-            if isRangeRequest {
-                headers = self.buildHeaders(
-                    statusCode: 206,
-                    contentLength: contentLength,
-                    acceptRanges: "bytes",
-                    contentType: "video/mp4",
-                    contentRange: "bytes \(rangeStart)-\(endOffset)/\(currentSize)"
-                )
-            } else {
-                headers = self.buildHeaders(
-                    statusCode: 200,
-                    contentLength: contentLength,
-                    acceptRanges: "bytes",
-                    contentType: "video/mp4"
-                )
-            }
-
-            self.log("Response: \(contentLength) bytes")
-            self.sendResponse(connection: connection, headers: headers, body: data)
-            completion()
-        }
+        // Process request synchronously - all data access is thread-safe via locks
+        processRequestSynchronous(
+            connection: connection,
+            method: method,
+            isRangeRequest: isRangeRequest,
+            rangeStart: rangeStart,
+            rangeEnd: rangeEnd,
+            completion: completion
+        )
     }
 
-    private func parseRangeHeader(_ value: String) -> (start: Int64, end: Int64)? {
+    private nonisolated func processRequestSynchronous(
+        connection: NWConnection,
+        method: String,
+        isRangeRequest: Bool,
+        rangeStart: Int64,
+        rangeEnd: Int64,
+        completion: @escaping () -> Void
+    ) {
+        // For probe requests (0-1), only need a small amount
+        let minRequired = isRangeRequest && rangeEnd <= 1 ? Int64(2) : Int64(65536)
+
+        // Check if data is already available (non-blocking)
+        let currentSize = getRemuxedSize()
+        debugLog("🔄 Current buffer size: \(currentSize), requested: \(rangeStart)-\(rangeEnd), minRequired: \(minRequired)")
+
+        // Check for errors
+        if let error = remuxError.withLock({ $0 }) {
+            debugLog("🔄 Remux error: \(error)")
+            sendError(connection: connection, code: 500, message: "Remux failed: \(error.localizedDescription)")
+            completion()
+            return
+        }
+
+        // If not enough data and remux is still in progress, return 503
+        // AVPlayer will retry automatically
+        guard currentSize >= minRequired || isRemuxComplete() else {
+            debugLog("🔄 Not enough data yet, returning 503 (will retry)")
+            sendError(connection: connection, code: 503, message: "Service Unavailable")
+            completion()
+            return
+        }
+
+        if method == "HEAD" {
+            let headers = buildHeaders(
+                statusCode: 200,
+                contentLength: currentSize,
+                acceptRanges: "bytes",
+                contentType: "video/mp2t"
+            )
+            sendResponse(connection: connection, headers: headers)
+            completion()
+            return
+        }
+
+        // Calculate actual range end based on available data
+        let actualEndOffset = currentSize > 0 ? min(rangeEnd, currentSize - 1) : rangeEnd
+        let contentLength = currentSize > 0 ? max(0, actualEndOffset - rangeStart + 1) : 0
+
+        guard contentLength > 0, currentSize > rangeStart else {
+            // No data yet
+            debugLog("🔄 No data available: currentSize=\(currentSize), rangeStart=\(rangeStart)")
+            sendError(connection: connection, code: 503, message: "Service Unavailable")
+            completion()
+            return
+        }
+
+        let data = getRemuxedData(at: rangeStart, length: Int(contentLength))
+        let endOffset = rangeStart + contentLength - 1
+
+        // Build headers
+        // For Range requests, use 206 Partial Content with Content-Range
+        // This is required for AVPlayer to properly handle the stream
+        let headers: String
+        if isRangeRequest {
+            let contentRange = "bytes \(rangeStart)-\(endOffset)/\(currentSize)"
+            headers = buildHeaders(
+                statusCode: 206,
+                contentLength: contentLength,
+                acceptRanges: "bytes",
+                contentType: "video/mp2t",
+                contentRange: contentRange
+            )
+        } else {
+            headers = buildHeaders(
+                statusCode: 200,
+                contentLength: currentSize,
+                acceptRanges: "bytes",
+                contentType: "video/mp2t"
+            )
+        }
+
+        debugLog("🔄 Response: \(contentLength) bytes")
+        sendResponse(connection: connection, headers: headers, body: data)
+        completion()
+    }
+
+    private nonisolated func parseRangeHeader(_ value: String) -> (start: Int64, end: Int64)? {
         guard value.hasPrefix("bytes=") else { return nil }
         let rangeStr = String(value.dropFirst(6))
 
@@ -395,16 +413,18 @@ final class RemuxingProxyServer: @unchecked Sendable {
         return nil
     }
 
-    private func buildHeaders(
+    private nonisolated func buildHeaders(
         statusCode: Int,
         contentLength: Int64,
-        acceptRanges: String,
+        acceptRanges: String?,
         contentType: String,
         contentRange: String? = nil
     ) -> String {
         var headers = "HTTP/1.1 \(statusCode) \(statusMessage(for: statusCode))\r\n"
         headers += "Content-Length: \(contentLength)\r\n"
-        headers += "Accept-Ranges: \(acceptRanges)\r\n"
+        if let acceptRanges = acceptRanges {
+            headers += "Accept-Ranges: \(acceptRanges)\r\n"
+        }
         headers += "Content-Type: \(contentType)\r\n"
         if let contentRange = contentRange {
             headers += "Content-Range: \(contentRange)\r\n"
@@ -414,7 +434,7 @@ final class RemuxingProxyServer: @unchecked Sendable {
         return headers
     }
 
-    private func statusMessage(for code: Int) -> String {
+    private nonisolated func statusMessage(for code: Int) -> String {
         switch code {
         case 200: return "OK"
         case 206: return "Partial Content"
@@ -427,15 +447,20 @@ final class RemuxingProxyServer: @unchecked Sendable {
         }
     }
 
-    private func sendResponse(connection: NWConnection, headers: String, body: Data? = nil) {
+    private nonisolated func sendResponse(connection: NWConnection, headers: String, body: Data? = nil) {
         var data = Data(headers.utf8)
         if let body = body {
             data.append(body)
         }
-        connection.send(content: data, completion: .contentProcessed { _ in })
+        debugLog("🔄 Sending response: \(data.count) bytes")
+        connection.send(content: data, completion: .contentProcessed { error in
+            if let error = error {
+                debugLog("🔄 Send error: \(error)")
+            }
+        })
     }
 
-    private func sendError(connection: NWConnection, code: Int, message: String) {
+    private nonisolated func sendError(connection: NWConnection, code: Int, message: String) {
         let body = "<html><body><h1>\(code) \(message)</h1></body></html>"
         let headers = "HTTP/1.1 \(code) \(message)\r\nContent-Length: \(body.utf8.count)\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n"
         sendResponse(connection: connection, headers: headers, body: Data(body.utf8))

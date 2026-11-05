@@ -79,9 +79,8 @@ public final class VideoToolboxDecoderPlugin: VideoDecoderPlugin {
     private func handleDecodedFrame(status: OSStatus, imageBuffer: CVImageBuffer?, pts: CMTime, duration: CMTime) {
         guard status == noErr, let imageBuffer = imageBuffer else { return }
 
-        let pixelBuffer = CVPixelBuffer.from(imageBuffer)
         let frame = VideoFrame(
-            pixelBuffer: pixelBuffer,
+            pixelBuffer: imageBuffer,
             presentationTimestamp: CMTimeGetSeconds(pts).times(1_000_000),
             duration: CMTimeGetSeconds(duration).times(1_000_000)
         )
@@ -111,7 +110,6 @@ public final class VideoToolboxDecoderPlugin: VideoDecoderPlugin {
             decodeTimeStamp: .invalid
         )
 
-        var sampleBufferStatus = noErr
         packet.data.withUnsafeBytes { bytes in
             var blockBuffer: CMBlockBuffer?
             CMBlockBufferCreateWithMemoryBlock(
@@ -207,11 +205,5 @@ public final class VideoToolboxDecoderPlugin: VideoDecoderPlugin {
 private extension Double {
     func times(_ multiplier: Int64) -> Int64 {
         Int64(self * Double(multiplier))
-    }
-}
-
-private extension CVPixelBuffer {
-    static func from(_ imageBuffer: CVImageBuffer) -> CVPixelBuffer {
-        CVPixelBuffer.from(imageBuffer as! CVPixelBuffer)
     }
 }

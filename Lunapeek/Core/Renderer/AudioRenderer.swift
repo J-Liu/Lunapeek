@@ -80,7 +80,7 @@ public final class AudioRenderer {
 
             let samples = pendingSamples.removeFirst()
             let copySize = min(samples.data.count, Int(buffer.pointee.mAudioDataBytesCapacity))
-            samples.data.withUnsafeBytes { bytes in
+            _ = samples.data.withUnsafeBytes { bytes in
                 memcpy(buffer.pointee.mAudioData, bytes.baseAddress, copySize)
             }
             buffer.pointee.mAudioDataByteSize = UInt32(copySize)

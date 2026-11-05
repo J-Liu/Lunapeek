@@ -7,7 +7,9 @@ import UIKit
 import UniformTypeIdentifiers
 
 class ViewController: UIViewController {
-    private var playerEngine: PlayerEngine?
+    private var lpPlayerEngine: LPPlayerEngine?
+    private var lpVideoRenderer: LPVideoRenderer?
+    private var lpAudioRenderer: LPAudioRenderer?
     private var videoView: UIView!
     private var playButton: UIButton!
 
@@ -43,19 +45,18 @@ class ViewController: UIViewController {
     }
 
     private func setupPlayer() {
-        let demuxer = SystemDemuxerPlugin()
-        let videoDecoder = VideoToolboxDecoderPlugin()
-        let audioDecoder = AudioToolboxDecoderPlugin()
-        let videoRenderer = VideoRenderer()
-        let audioRenderer = AudioRenderer()
+        let videoRenderer = LPVideoRenderer()
+        let audioRenderer = LPAudioRenderer()
+        lpVideoRenderer = videoRenderer
+        lpAudioRenderer = audioRenderer
 
-        playerEngine = PlayerEngine(
-            demuxer: demuxer,
-            videoDecoder: videoDecoder,
-            audioDecoder: audioDecoder,
-            videoRenderer: videoRenderer,
-            audioRenderer: audioRenderer
-        )
+        lpPlayerEngine = LPPlayerEngine()
+        lpPlayerEngine?.videoRenderer = { [weak self] frame in
+            videoRenderer.enqueue(frame)
+        }
+        lpPlayerEngine?.audioRenderer = { [weak self] frame in
+            audioRenderer.enqueue(frame)
+        }
 
         videoView.layer.addSublayer(videoRenderer.layer)
         videoRenderer.layer.frame = videoView.bounds
@@ -63,7 +64,7 @@ class ViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        playerEngine?.videoRendererLayer?.frame = videoView.bounds
+        lpVideoRenderer?.layer.frame = videoView.bounds
     }
 
     @objc private func openFileTapped() {
@@ -73,14 +74,16 @@ class ViewController: UIViewController {
     }
 
     @objc private func playPauseTapped() {
-        guard let engine = playerEngine else { return }
+        guard let engine = lpPlayerEngine else { return }
 
         switch engine.state {
         case .ready, .paused:
             engine.play()
+            lpAudioRenderer?.play()
             playButton.setTitle("Pause", for: .normal)
         case .playing:
             engine.pause()
+            lpAudioRenderer?.pause()
             playButton.setTitle("Play", for: .normal)
         default:
             break
@@ -94,8 +97,9 @@ extension ViewController: UIDocumentPickerDelegate {
 
         Task {
             do {
-                try await playerEngine?.load(url: url)
-                playerEngine?.play()
+                try await lpPlayerEngine?.open(url: url)
+                lpAudioRenderer?.play()
+                lpPlayerEngine?.play()
                 playButton.removeTarget(self, action: #selector(openFileTapped), for: .touchUpInside)
                 playButton.addTarget(self, action: #selector(playPauseTapped), for: .touchUpInside)
                 playButton.setTitle("Pause", for: .normal)

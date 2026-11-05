@@ -5,18 +5,17 @@
 
 import Foundation
 import Network
+import os
 
 /// HTTP proxy server for streaming remote files to AVPlayer.
 final class HTTPProxyServer: @unchecked Sendable {
     private var listener: NWListener?
-    private var _port: UInt16 = 0
+    private var _port: OSAllocatedUnfairLock<UInt16> = OSAllocatedUnfairLock(initialState: 0)
     private let queue = DispatchQueue(label: "com.lunapeek.http-proxy")
-    private let portLock = NSLock()
     private var isRunning = false
 
     // Active connections
-    private var activeConnections: [NWConnection] = []
-    private let connectionsLock = NSLock()
+    private var activeConnections: OSAllocatedUnfairLock<[NWConnection]> = OSAllocatedUnfairLock(initialState: [])
 
     // Data source
     private var fileSize: Int64 = 0
@@ -25,12 +24,11 @@ final class HTTPProxyServer: @unchecked Sendable {
     private var logHandler: ((String) -> Void)?
 
     var localURL: URL? {
-        portLock.lock()
-        defer { portLock.unlock() }
-        guard _port > 0 else { return nil }
+        let port = _port.withLock { $0 }
+        guard port > 0 else { return nil }
         // Include filename in URL for proper demuxer selection
         let encodedName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "video"
-        return URL(string: "http://127.0.0.1:\(_port)/\(encodedName)")
+        return URL(string: "http://127.0.0.1:\(port)/\(encodedName)")
     }
 
     private var contentType: String {
@@ -55,7 +53,7 @@ final class HTTPProxyServer: @unchecked Sendable {
         }
     }
 
-    private func log(_ message: String) {
+    private nonisolated func log(_ message: String) {
         debugLog("🌐 \(message)")
     }
 
@@ -81,14 +79,13 @@ final class HTTPProxyServer: @unchecked Sendable {
 
         listener = try NWListener(using: parameters, on: .any)
         let weakListener = listener
+        let weakPort = _port
         listener?.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             switch state {
             case .ready:
                 if let port = weakListener?.port?.rawValue {
-                    self.portLock.lock()
-                    self._port = port
-                    self.portLock.unlock()
+                    weakPort.withLock { $0 = port }
                     self.log("Server started on port \(port)")
                 }
             case .failed(let error):
@@ -107,12 +104,7 @@ final class HTTPProxyServer: @unchecked Sendable {
 
         // Wait for server to be ready
         while true {
-            let currentPort = await MainActor.run {
-                portLock.lock()
-                let port = _port
-                portLock.unlock()
-                return port
-            }
+            let currentPort = _port.withLock { $0 }
             if currentPort > 0 { break }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -122,10 +114,11 @@ final class HTTPProxyServer: @unchecked Sendable {
         isRunning = false
 
         // Cancel all active connections
-        connectionsLock.lock()
-        let connections = activeConnections
-        activeConnections.removeAll()
-        connectionsLock.unlock()
+        let connections = activeConnections.withLock {
+            let conns = $0
+            $0.removeAll()
+            return conns
+        }
 
         for connection in connections {
             connection.cancel()
@@ -134,40 +127,20 @@ final class HTTPProxyServer: @unchecked Sendable {
         // Cancel listener
         listener?.cancel()
         listener = nil
-        portLock.lock()
-        _port = 0
-        portLock.unlock()
+        _port.withLock { $0 = 0 }
         dataReader = nil
     }
 
-    private func handleConnection(_ connection: NWConnection) {
-        // Check if server is still running
-        guard isRunning else {
-            connection.cancel()
-            return
-        }
-
-        // Track connection
-        connectionsLock.lock()
-        activeConnections.append(connection)
-        connectionsLock.unlock()
-
+    private nonisolated func handleConnection(_ connection: NWConnection) {
         connection.start(queue: queue)
-
-        // Keep reading requests on the same connection (HTTP keep-alive)
         readNextRequest(connection: connection)
     }
 
-    private func readNextRequest(connection: NWConnection) {
+    private nonisolated func readNextRequest(connection: NWConnection) {
         var buffer = Data()
 
         func receiveLoop() {
             connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, isComplete, error in
-                guard let self else {
-                    connection.cancel()
-                    return
-                }
-
                 if let data = data, !data.isEmpty {
                     buffer.append(data)
 
@@ -175,9 +148,9 @@ final class HTTPProxyServer: @unchecked Sendable {
                     if let requestString = String(data: buffer, encoding: .utf8),
                        requestString.contains("\r\n\r\n") {
                         // Process request, then continue reading next request
-                        self.handleRequest(requestString, connection: connection) {
+                        self?.handleRequest(requestString, connection: connection) {
                             // After response is sent, wait for next request
-                            self.readNextRequest(connection: connection)
+                            self?.readNextRequest(connection: connection)
                         }
                         return
                     }
@@ -196,12 +169,7 @@ final class HTTPProxyServer: @unchecked Sendable {
         receiveLoop()
     }
 
-    private func handleRequest(_ request: String, connection: NWConnection, completion: @escaping () -> Void) {
-        // Check if server is still running
-        guard isRunning else {
-            connection.cancel()
-            return
-        }
+    private nonisolated func handleRequest(_ request: String, connection: NWConnection, completion: @escaping () -> Void) {
 
         // Debug log
         log("Request: \(request.prefix(200))")
@@ -228,9 +196,9 @@ final class HTTPProxyServer: @unchecked Sendable {
             return
         }
 
-        // Parse Range header
+        // Parse Range header - capture values we need
         var rangeStart: Int64 = 0
-        var rangeEnd: Int64 = fileSize - 1
+        var rangeEnd: Int64 = Int64.max
         var isRangeRequest = false
 
         for line in lines {
@@ -239,24 +207,27 @@ final class HTTPProxyServer: @unchecked Sendable {
                 let rangeValue = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
                 if let range = parseRangeHeader(rangeValue) {
                     rangeStart = range.start
-                    rangeEnd = min(range.end, fileSize - 1)
+                    rangeEnd = range.end
                 }
             }
         }
 
-        let contentLength = rangeEnd - rangeStart + 1
-
-        Task { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else {
                 connection.cancel()
                 return
             }
 
+            // Clamp range to file size
+            let fileSize = self.fileSize
+            let clampedEnd = min(rangeEnd, fileSize - 1)
+            let contentLength = clampedEnd - rangeStart + 1
+
             if method == "HEAD" {
                 // HEAD request - just send headers
                 let headers = self.buildHeaders(
                     statusCode: isRangeRequest ? 206 : 200,
-                    contentLength: self.fileSize,
+                    contentLength: fileSize,
                     acceptRanges: "bytes",
                     contentType: self.contentType
                 )
@@ -275,7 +246,7 @@ final class HTTPProxyServer: @unchecked Sendable {
             do {
                 // Read data from source
                 let length = Int(contentLength)
-                self.log("Read: \(rangeStart)-\(rangeEnd) (\(length) bytes)")
+                self.log("Read: \(rangeStart)-\(clampedEnd) (\(length) bytes)")
                 let data = try await reader(rangeStart, length)
                 self.log("Read \(data.count) bytes OK")
 
@@ -287,12 +258,12 @@ final class HTTPProxyServer: @unchecked Sendable {
                         contentLength: contentLength,
                         acceptRanges: "bytes",
                         contentType: self.contentType,
-                        contentRange: "bytes \(rangeStart)-\(rangeEnd)/\(self.fileSize)"
+                        contentRange: "bytes \(rangeStart)-\(clampedEnd)/\(fileSize)"
                     )
                 } else {
                     headers = self.buildHeaders(
                         statusCode: 200,
-                        contentLength: self.fileSize,
+                        contentLength: fileSize,
                         acceptRanges: "bytes",
                         contentType: self.contentType
                     )
@@ -309,7 +280,7 @@ final class HTTPProxyServer: @unchecked Sendable {
         }
     }
 
-    private func parseRangeHeader(_ value: String) -> (start: Int64, end: Int64)? {
+    private nonisolated func parseRangeHeader(_ value: String) -> (start: Int64, end: Int64)? {
         // Format: bytes=start-end or bytes=start-
         guard value.hasPrefix("bytes=") else { return nil }
         let rangeStr = String(value.dropFirst(6))
@@ -321,7 +292,7 @@ final class HTTPProxyServer: @unchecked Sendable {
                 if parts.count > 1, let endVal = Int64(parts[1]) {
                     end = endVal
                 } else {
-                    end = fileSize - 1
+                    end = Int64.max  // Will be clamped by caller
                 }
                 return (start, end)
             }
@@ -330,7 +301,7 @@ final class HTTPProxyServer: @unchecked Sendable {
         return nil
     }
 
-    private func buildHeaders(
+    private nonisolated func buildHeaders(
         statusCode: Int,
         contentLength: Int64,
         acceptRanges: String,
@@ -348,7 +319,7 @@ final class HTTPProxyServer: @unchecked Sendable {
         return headers
     }
 
-    private func statusMessage(for code: Int) -> String {
+    private nonisolated func statusMessage(for code: Int) -> String {
         switch code {
         case 200: return "OK"
         case 206: return "Partial Content"
@@ -360,7 +331,7 @@ final class HTTPProxyServer: @unchecked Sendable {
         }
     }
 
-    private func sendResponse(connection: NWConnection, headers: String, body: Data? = nil) {
+    private nonisolated func sendResponse(connection: NWConnection, headers: String, body: Data? = nil) {
         var data = Data(headers.utf8)
         if let body = body {
             data.append(body)
@@ -368,7 +339,7 @@ final class HTTPProxyServer: @unchecked Sendable {
         connection.send(content: data, completion: .contentProcessed { _ in })
     }
 
-    private func sendError(connection: NWConnection, code: Int, message: String) {
+    private nonisolated func sendError(connection: NWConnection, code: Int, message: String) {
         let body = "<html><body><h1>\(code) \(message)</h1></body></html>"
         let headers = "HTTP/1.1 \(code) \(message)\r\nContent-Length: \(body.utf8.count)\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n"
         sendResponse(connection: connection, headers: headers, body: Data(body.utf8))

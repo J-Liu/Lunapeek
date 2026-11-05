@@ -1167,7 +1167,7 @@ final class MediaItemCell: UICollectionViewCell {
     }
 
     private func generateThumbnail(for url: URL) {
-        let asset = AVAsset(url: url)
+        let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 400, height: 400)
