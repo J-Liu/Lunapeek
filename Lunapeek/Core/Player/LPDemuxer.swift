@@ -370,16 +370,9 @@ public final class LPDemuxer {
         var seekValidationDone = false  // Only validate first packet after seek
         let seekToleranceSec: Double = 10.0  // Allow 10 second tolerance for seek validation
 
-        // Frame rate limiting - assume ~30fps max, adjust based on actual frame timing
-        var lastVideoPts: Int64 = 0
-        var frameDurationUs: Int64 = 33_333  // ~30fps in microseconds (default)
-
         debugLog("📋 Demuxer: Starting read loop, isRunning=\(isRunning)")
 
         while isRunning {
-            // Small delay to prevent CPU spinning (targeting ~60fps max read rate)
-            Thread.sleep(forTimeInterval: 0.005)  // 5ms
-
             let result = av_read_frame(formatCtx, &packet)
 
             if result < 0 {

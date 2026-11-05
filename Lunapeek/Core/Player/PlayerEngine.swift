@@ -49,6 +49,8 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
     public var audioRendererFlush: (() -> Void)?  // Called on seek to clear renderer
     public var videoRendererPlay: (() -> Void)?   // Called when playback starts
     public var videoRendererPause: (() -> Void)?  // Called when playback pauses
+    public var audioRendererPlay: (() -> Void)?   // Called when playback starts
+    public var audioRendererPause: (() -> Void)?  // Called when playback pauses
 
     // Stream tracking
     private var videoStreamIndex: Int?
@@ -136,6 +138,7 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         onStateChanged?(.playing)
         isPlaying = true
         videoRendererPlay?()
+        audioRendererPlay?()
         demuxer?.start()
     }
 
@@ -149,6 +152,7 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         onStateChanged?(.paused)
         isPlaying = false
         videoRendererPause?()
+        audioRendererPause?()
         // Don't stop demuxer - just stop rendering
         // demuxer?.stop() would cause EOF on resume
     }
@@ -191,6 +195,9 @@ public final class LPPlayerEngine: LPDemuxerDelegate {
         if success && state == .playing {
             debugLog("🎬 PlayerEngine: Restarting demuxer after seek")
             demuxer?.start()
+            // Restart renderers after flush
+            videoRendererPlay?()
+            audioRendererPlay?()
         } else if !success {
             debugLog("⚠️ PlayerEngine: Seek failed, not restarting demuxer")
             isSeeking = false
