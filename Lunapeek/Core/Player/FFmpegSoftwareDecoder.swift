@@ -72,13 +72,17 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
         defer { lock.unlock() }
 
         guard let context = codecContext, let frame = frame else {
+            debugLog("❌ FFmpegSoft: decode called but no context/frame, context=\(codecContext != nil), frame=\(self.frame != nil)")
             return false
         }
 
         // Check if decoder is still valid
         guard context.pointee.codec != nil else {
+            debugLog("❌ FFmpegSoft: codec is nil after flush")
             return false
         }
+
+        debugLog("🔄 FFmpegSoft: decode called, pts=\(packet.pointee.pts), size=\(packet.pointee.size)")
 
         // Send packet to decoder
         let pkt: UnsafeMutablePointer<AVPacket>? = packet
@@ -86,8 +90,10 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
         if sendRet < 0 && sendRet != AVERROR_EOF {
             // -11 (EAGAIN) or -35 means need to read output first
             if sendRet != -11 && sendRet != -35 {
-                debugLog("❌ FFmpegSoft: send_packet error: \(sendRet), size=\(packet.pointee.size)")
+                debugLog("❌ FFmpegSoft: send_packet error: \(sendRet), size=\(packet.pointee.size), pts=\(packet.pointee.pts)")
                 return false
+            } else {
+                debugLog("⚠️ FFmpegSoft: send_packet EAGAIN, need to receive frames first")
             }
         }
 
@@ -102,6 +108,8 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
                 // -11 (EAGAIN) or -35 means need more input data
                 if receiveRet != -11 && receiveRet != -35 && receiveRet != AVERROR_EOF {
                     debugLog("❌ FFmpegSoft: receive_frame error: \(receiveRet)")
+                } else if receiveRet == -11 || receiveRet == -35 {
+                    debugLog("⚠️ FFmpegSoft: receive_frame EAGAIN, need more packets")
                 }
                 break  // Exit loop on any error
             }
@@ -124,18 +132,18 @@ public final class FFmpegSoftwareDecoder: LPVideoDecoderProtocol {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let context = codecContext else { return }
+        debugLog("🔄 FFmpegSoft: flush() called")
 
-        // Send flush packet
-        avcodec_send_packet(context, nil)
-
-        // Get remaining frames but don't deliver (we're seeking)
-        guard let frame = frame else { return }
-        while true {
-            let ret = avcodec_receive_frame(context, frame)
-            if ret < 0 { break }
-            av_frame_unref(frame)
+        guard let context = codecContext else {
+            debugLog("⚠️ FFmpegSoft: flush() - no codecContext")
+            return
         }
+
+        // Use avcodec_flush_buffers to properly reset the decoder
+        // This is the correct way to flush after seek
+        avcodec_flush_buffers(context)
+
+        debugLog("✅ FFmpegSoft: flush() complete, codecContext=\(codecContext != nil), frame=\(self.frame != nil)")
 
         // Reset swsContext to force recreation after seek
         if let swsContext = swsContext {
