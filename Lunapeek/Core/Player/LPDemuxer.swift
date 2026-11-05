@@ -60,10 +60,12 @@ public final class LPDemuxer {
 
         // Create format context
         var ctx: UnsafeMutablePointer<AVFormatContext>?
-        let result = avformat_open_input(&ctx, url.path, nil, nil)
+        // Use absoluteString for HTTP URLs, path for local files
+        let urlString = url.scheme == "http" || url.scheme == "https" ? url.absoluteString : url.path
+        let result = avformat_open_input(&ctx, urlString, nil, nil)
 
         guard result == 0, let formatCtx = ctx else {
-            debugLog("❌ Demuxer: Failed to open input: \(url.path), error: \(result)")
+            debugLog("❌ Demuxer: Failed to open input: \(urlString), error: \(result)")
             return false
         }
 

@@ -1121,37 +1121,20 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Check if the file needs remuxing based on container format
-        if DemuxerFactory.needsRemux(url) {
-            // Need to probe the file to check if codecs are supported by AVPlayer
-            Task {
-                let codecResult = await CodecSupportChecker.checkFile(url)
-
-                if codecResult.needsFFmpeg {
-                    // Use LPPlayerEngine with FFmpeg decoding
-                    if let reason = codecResult.reason {
-                        log("Using FFmpeg decoding: \(reason)")
-                    }
-                    await setupLPPlayer()
-                } else {
-                    // Codecs are supported - use remuxing to AVPlayer
-                    log("Codecs supported, using remuxing to AVPlayer")
-                    await setupRemuxingPlayer()
-                }
-            }
-            return
-        }
-
-        // Native formats (MP4/MOV) - use AVPlayer directly
-        if url.scheme == "http" || url.scheme == "https" || url.isFileURL {
-            log("Using AVPlayer")
+        // Native formats (MP4/MOV) - use AVPlayer directly for optimal performance
+        if (url.pathExtension.lowercased() == "mp4" || url.pathExtension.lowercased() == "mov")
+            && (url.scheme == "http" || url.scheme == "https" || url.isFileURL) {
+            log("Native format, using AVPlayer")
             setupAVPlayer()
             return
         }
 
-        // Network files (SMB/SFTP) that don't need remuxing
-        log("Using AVPlayer for network file")
-        setupAVPlayer()
+        // All other formats (MKV, AVI, WebM, etc.) - use LPPlayerEngine
+        // This provides: no seek barrier, hardware acceleration for supported codecs, unified code path
+        log("Using LPPlayerEngine for \(url.pathExtension)")
+        Task {
+            await setupLPPlayer()
+        }
     }
 
     private func setupAVPlayer() {
