@@ -50,25 +50,28 @@
 		08D82BF63076F54F00A6F143 /* Exceptions for "Lunapeek" folder in "Embed Frameworks" phase from "Lunapeek" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
-				ffmpegkit.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
-				libavcodec.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
-				libavdevice.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
-				libavfilter.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
-				libavformat.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
-				libavutil.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
-				libswresample.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
-				libswscale.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				Frameworks/Mpv.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
 			};
 			buildPhase = 08D82BF53076F54E00A6F143 /* Embed Frameworks */;
 			membershipExceptions = (
-				ffmpegkit.xcframework,
-				libavcodec.xcframework,
-				libavdevice.xcframework,
-				libavfilter.xcframework,
-				libavformat.xcframework,
-				libavutil.xcframework,
-				libswresample.xcframework,
-				libswscale.xcframework,
+				Frameworks/Ass.xcframework,
+				Frameworks/Avcodec.xcframework,
+				Frameworks/Avfilter.xcframework,
+				Frameworks/Avformat.xcframework,
+				Frameworks/Avutil.xcframework,
+				Frameworks/Dav1d.xcframework,
+				Frameworks/Freetype.xcframework,
+				Frameworks/Fribidi.xcframework,
+				Frameworks/Harfbuzz.xcframework,
+				Frameworks/Mbedcrypto.xcframework,
+				Frameworks/Mbedtls.xcframework,
+				Frameworks/Mbedx509.xcframework,
+				Frameworks/Mpv.xcframework,
+				Frameworks/Png16.xcframework,
+				Frameworks/Swresample.xcframework,
+				Frameworks/Swscale.xcframework,
+				Frameworks/Uchardet.xcframework,
+				Frameworks/Xml2.xcframework,
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
@@ -232,6 +235,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.2;
+				OTHER_LDFLAGS = "-ObjC";
 				OTHER_SWIFT_FLAGS = "-Xcc -fmodule-map-file=$(SRCROOT)/Lunapeek/module.modulemap";
 				PRODUCT_BUNDLE_IDENTIFIER = com.JiaLiu.Lunapeek;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -271,6 +275,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.2;
+				OTHER_LDFLAGS = "-ObjC";
 				OTHER_SWIFT_FLAGS = "-Xcc -fmodule-map-file=$(SRCROOT)/Lunapeek/module.modulemap";
 				PRODUCT_BUNDLE_IDENTIFIER = com.JiaLiu.Lunapeek;
 				PRODUCT_NAME = "$(TARGET_NAME)";
