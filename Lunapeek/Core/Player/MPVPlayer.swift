@@ -85,8 +85,16 @@ public final class MPVPlayer {
         // Set options for iOS
         log("Setting options...")
 
-        // Use 'libmpv' for rendering control - let us handle the rendering
-        setOption("vo", value: "libmpv")
+        // Pass the view's layer to mpv for rendering
+        if let playerView = playerView {
+            var layer = playerView.layer
+            let widResult = mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &layer)
+            log("Set wid option result: \(widResult)")
+        }
+
+        // Use 'gpu' video output with iOS OpenGL context (ios-gl is enabled in build)
+        setOption("vo", value: "gpu")
+        setOption("gpu-context", value: "ios")
         setOption("hwdec", value: "videotoolbox")
         setOption("vid", value: "auto")
         setOption("aid", value: "auto")
