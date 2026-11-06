@@ -265,6 +265,8 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
         alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { [weak self] _ in
             for file in files {
                 try? FileManager.default.removeItem(at: file.url)
+                // Remove playback history for deleted file
+                PlaybackHistory.shared.removeProgress(for: file.url)
             }
             self?.toggleSelect()
             self?.loadMedia()
@@ -384,6 +386,8 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
     private func delete(item: LocalMediaItem) {
         do {
             try FileManager.default.removeItem(at: item.url)
+            // Remove playback history for deleted file
+            PlaybackHistory.shared.removeProgress(for: item.url)
             loadMedia()
         } catch {
             let alert = UIAlertController(

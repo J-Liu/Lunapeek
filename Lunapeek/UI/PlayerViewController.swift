@@ -1350,6 +1350,9 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     private func setupAetherEngine() {
         log("🎬 Setting up AetherEngine for: \(url.lastPathComponent)")
 
+        // Clean up orphaned playback history records
+        PlaybackHistory.shared.cleanupOrphanedRecords()
+
         // Activate audio session for playback
         activateAudioSession()
 
@@ -1408,20 +1411,28 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
         // Load the URL
         Task { [weak self] in
+            guard let self else { return }
             do {
-                try await self?.engine?.load(url: self!.url)
-                self?.engine?.play()
-                self?.log("✅ AetherEngine loaded and started")
+                try await self.engine?.load(url: self.url)
+
+                // Restore saved progress if available
+                if let savedTime = PlaybackHistory.shared.getProgress(for: self.url), savedTime > 0 {
+                    self.log("📍 Restoring playback position: \(savedTime)s")
+                    await self.engine?.seek(to: savedTime)
+                }
+
+                self.engine?.play()
+                self.log("✅ AetherEngine loaded and started")
                 // Initialize selected audio track to first track
-                if let firstTrack = self?.engine?.audioTracks.first {
-                    self?.selectedAudioTrackID = firstTrack.id
+                if let firstTrack = self.engine?.audioTracks.first {
+                    self.selectedAudioTrackID = firstTrack.id
                 }
                 // Search and load external subtitles
-                await self?.loadExternalSubtitles()
+                await self.loadExternalSubtitles()
             } catch {
-                self?.log("❌ AetherEngine load failed: \(error)")
+                self.log("❌ AetherEngine load failed: \(error)")
                 DispatchQueue.main.async {
-                    self?.showError(error)
+                    self.showError(error)
                 }
             }
         }
@@ -2219,6 +2230,9 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     private func cleanupAndDismiss() {
+        // Save playback progress
+        savePlaybackProgress()
+
         if let observer = timeObserver {
             avQueuePlayer?.removeTimeObserver(observer)
             timeObserver = nil
@@ -2236,6 +2250,35 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         engine = nil
 
         dismiss(animated: true)
+    }
+
+    private func savePlaybackProgress() {
+        // Get current playback time
+        let currentTime: Double
+
+        if let engine = engine {
+            currentTime = engine.clock.currentTime
+        } else if let player = avQueuePlayer {
+            currentTime = player.currentTime().seconds
+        } else {
+            return
+        }
+
+        // Only save if we've made some progress (at least 5 seconds)
+        // and not near the end (within last 5 seconds)
+        let duration: Double
+        if let engine = engine {
+            duration = engine.duration
+        } else if let player = avQueuePlayer {
+            duration = player.currentItem?.duration.seconds ?? 0
+        } else {
+            duration = 0
+        }
+
+        guard currentTime > 5, duration > 10, currentTime < duration - 5 else { return }
+
+        PlaybackHistory.shared.saveProgress(for: url, time: currentTime)
+        log("📍 Saved playback progress: \(currentTime)s")
     }
 
     @objc private func playPauseTapped() {
