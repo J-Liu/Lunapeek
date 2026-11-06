@@ -54,23 +54,6 @@
 			};
 			buildPhase = 08D82BF53076F54E00A6F143 /* Embed Frameworks */;
 			membershipExceptions = (
-				Frameworks/Ass.xcframework,
-				Frameworks/Avcodec.xcframework,
-				Frameworks/Avfilter.xcframework,
-				Frameworks/Avformat.xcframework,
-				Frameworks/Avutil.xcframework,
-				Frameworks/Dav1d.xcframework,
-				Frameworks/Freetype.xcframework,
-				Frameworks/Fribidi.xcframework,
-				Frameworks/Harfbuzz.xcframework,
-				Frameworks/Mbedcrypto.xcframework,
-				Frameworks/Mbedtls.xcframework,
-				Frameworks/Mbedx509.xcframework,
-				Frameworks/Png16.xcframework,
-				Frameworks/Swresample.xcframework,
-				Frameworks/Swscale.xcframework,
-				Frameworks/Uchardet.xcframework,
-				Frameworks/Xml2.xcframework,
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
