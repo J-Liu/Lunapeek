@@ -47,23 +47,11 @@
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
-/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		08D82BF63076F54F00A6F143 /* Exceptions for "Lunapeek" folder in "Embed Frameworks" phase from "Lunapeek" target */ = {
-			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			attributesByRelativePath = {
-			};
-			buildPhase = 08D82BF53076F54E00A6F143 /* Embed Frameworks */;
-			membershipExceptions = (
-			);
-		};
-/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		08F3D6C030733F2100B0FE4B /* Lunapeek */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				08F3D6D030733F2200B0FE4B /* Exceptions for "Lunapeek" folder in "Lunapeek" target */,
-				08D82BF63076F54F00A6F143 /* Exceptions for "Lunapeek" folder in "Embed Frameworks" phase from "Lunapeek" target */,
 			);
 			path = Lunapeek;
 			sourceTree = "<group>";
