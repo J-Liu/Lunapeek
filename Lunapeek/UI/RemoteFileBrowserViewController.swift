@@ -9,6 +9,7 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
     private let server: SavedServer
     private var currentPath: String
     private var items: [RemoteFileItem] = []
+    private var originalFiles: [RemoteFileItem] = [] // Unfiltered files for real-time filtering
     private var selectedItems: Set<IndexPath> = []
     private var isSelecting = false
 
@@ -118,11 +119,25 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
             name: .languageChanged,
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(fileBrowserSettingsChanged),
+            name: .fileBrowserSettingsChanged,
+            object: nil
+        )
     }
 
     @objc private func languageDidChange() {
         updateToolbar()
         collectionView.reloadData()
+    }
+
+    @objc private func fileBrowserSettingsChanged() {
+        // Re-apply filters to current files
+        Task { [weak self] in
+            await self?.applyFiltersAndRefresh()
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -403,19 +418,15 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
                 files = []
             }
 
-            // Filter non-media files if setting is disabled
-            let filteredFiles: [RemoteFileItem]
-            if Settings.shared.showNonMediaFiles {
-                filteredFiles = files
-            } else {
-                filteredFiles = files.filter { item in
-                    if item.isDirectory { return true }
-                    return isMediaFile(item.name)
-                }
-            }
+            // Store original unfiltered files
+            let allFiles = files
+
+            // Apply filters
+            let filteredFiles = Self.applyFilters(to: allFiles)
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
+                self.originalFiles = allFiles
                 self.items = filteredFiles
                 self.collectionView.reloadData()
                 self.appendDebugLog("Loaded \(filteredFiles.count) items, contentSize: \(Int(self.collectionView.contentSize.height))")
@@ -440,6 +451,42 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
         let audioExtensions = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma", "ape", "alac"]
         let subtitleExtensions = ["srt", "ass", "ssa", "vtt", "sub"]
         return videoExtensions.contains(ext) || audioExtensions.contains(ext) || subtitleExtensions.contains(ext)
+    }
+
+    /// Apply current filter settings to files
+    private static func applyFilters(to files: [RemoteFileItem]) -> [RemoteFileItem] {
+        var result = files
+
+        // Filter hidden files if setting is disabled
+        if !Settings.shared.showHiddenFiles {
+            result = result.filter { item in
+                !item.name.hasPrefix(".")
+            }
+        }
+
+        // Filter non-media files if setting is disabled
+        if !Settings.shared.showNonMediaFiles {
+            result = result.filter { item in
+                if item.isDirectory { return true }
+                // Use same logic as isMediaFile
+                let ext = (item.name as NSString).pathExtension.lowercased()
+                let videoExtensions = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv", "ts", "mts", "m2ts", "wmv", "rm", "rmvb", "3gp"]
+                let audioExtensions = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma", "ape", "alac"]
+                let subtitleExtensions = ["srt", "ass", "ssa", "vtt", "sub"]
+                return videoExtensions.contains(ext) || audioExtensions.contains(ext) || subtitleExtensions.contains(ext)
+            }
+        }
+
+        return result
+    }
+
+    /// Re-apply filters when settings change
+    private func applyFiltersAndRefresh() async {
+        await MainActor.run { [weak self] in
+            guard let self else { return }
+            self.items = Self.applyFilters(to: self.originalFiles)
+            self.collectionView.reloadData()
+        }
     }
 
     private func updateToolbar() {
@@ -1083,7 +1130,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
                 iconView.tintColor = .systemPink
             case "jpg", "jpeg", "png", "gif", "heic":
                 iconView.image = UIImage(systemName: "photo.fill")
-                iconView.tintColor = .systemTeal
+                iconView.tintColor = UIColor(red: 0.6, green: 0.4, blue: 0.8, alpha: 1.0) // Light purple
             case "srt", "ass", "ssa", "vtt", "sub":
                 iconView.image = UIImage(systemName: "captions.bubble")
                 iconView.tintColor = .systemOrange
@@ -1573,7 +1620,7 @@ final class FileItemCell: UICollectionViewCell {
                 iconView.tintColor = .systemPink
             case "jpg", "jpeg", "png", "gif", "heic":
                 iconView.image = UIImage(systemName: "photo.fill")
-                iconView.tintColor = .systemTeal
+                iconView.tintColor = UIColor(red: 0.6, green: 0.4, blue: 0.8, alpha: 1.0) // Light purple
             case "srt", "ass", "ssa", "vtt", "sub":
                 iconView.image = UIImage(systemName: "captions.bubble")
                 iconView.tintColor = .systemOrange

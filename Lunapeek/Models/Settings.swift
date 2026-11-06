@@ -46,7 +46,10 @@ final class Settings {
     // MARK: - File Browser
     var showHiddenFiles: Bool {
         get { defaults.bool(forKey: Key.showHiddenFiles) }
-        set { defaults.set(newValue, forKey: Key.showHiddenFiles) }
+        set {
+            defaults.set(newValue, forKey: Key.showHiddenFiles)
+            NotificationCenter.default.post(name: .fileBrowserSettingsChanged, object: nil)
+        }
     }
 
     var showNonMediaFiles: Bool {
@@ -56,7 +59,10 @@ final class Settings {
             }
             return defaults.bool(forKey: Key.showNonMediaFiles)
         }
-        set { defaults.set(newValue, forKey: Key.showNonMediaFiles) }
+        set {
+            defaults.set(newValue, forKey: Key.showNonMediaFiles)
+            NotificationCenter.default.post(name: .fileBrowserSettingsChanged, object: nil)
+        }
     }
 
     var showThumbnails: Bool {
@@ -180,4 +186,9 @@ func applyTheme(_ theme: AppTheme) {
             window.overrideUserInterfaceStyle = theme.userInterfaceStyle
         }
     }
+}
+
+// MARK: - Notification Names
+extension Notification.Name {
+    static let fileBrowserSettingsChanged = Notification.Name("fileBrowserSettingsChanged")
 }
