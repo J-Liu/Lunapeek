@@ -1624,6 +1624,7 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
     private func handleAetherEngineStateChanged(_ state: PlaybackState) {
         debugLog("🎬 PlayerViewController: handleAetherEngineStateChanged: \(state)")
+        log("State changed to: \(state)")
         switch state {
         case .playing:
             // Clear the audio track switching flag - rebuild complete
@@ -1660,7 +1661,8 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         let repeatMode = Settings.shared.repeatMode
         let autoPlayNext = Settings.shared.autoPlayNext
 
-        log("🎬 Playback ended, repeatMode=\(repeatMode.rawValue), autoPlayNext=\(autoPlayNext)")
+        log("🎬 handlePlaybackEnded: repeatMode=\(repeatMode.rawValue), autoPlayNext=\(autoPlayNext)")
+        debugLog("🎬 handlePlaybackEnded: repeatMode=\(repeatMode.rawValue), hasPlaylist=\(playlist != nil), currentIndex=\(currentIndex)")
 
         switch repeatMode {
         case .one:
