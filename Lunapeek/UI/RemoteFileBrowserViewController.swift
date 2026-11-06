@@ -438,7 +438,8 @@ final class RemoteFileBrowserViewController: UIViewController, UIGestureRecogniz
         let ext = (filename as NSString).pathExtension.lowercased()
         let videoExtensions = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv", "ts", "mts", "m2ts", "wmv", "rm", "rmvb", "3gp"]
         let audioExtensions = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma", "ape", "alac"]
-        return videoExtensions.contains(ext) || audioExtensions.contains(ext)
+        let subtitleExtensions = ["srt", "ass", "ssa", "vtt", "sub"]
+        return videoExtensions.contains(ext) || audioExtensions.contains(ext) || subtitleExtensions.contains(ext)
     }
 
     private func updateToolbar() {
@@ -1082,7 +1083,7 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
                 iconView.tintColor = .systemPink
             case "jpg", "jpeg", "png", "gif", "heic":
                 iconView.image = UIImage(systemName: "photo.fill")
-                iconView.tintColor = .systemGreen
+                iconView.tintColor = .systemTeal
             case "srt", "ass", "ssa", "vtt", "sub":
                 iconView.image = UIImage(systemName: "captions.bubble")
                 iconView.tintColor = .systemOrange
@@ -1572,7 +1573,7 @@ final class FileItemCell: UICollectionViewCell {
                 iconView.tintColor = .systemPink
             case "jpg", "jpeg", "png", "gif", "heic":
                 iconView.image = UIImage(systemName: "photo.fill")
-                iconView.tintColor = .systemGreen
+                iconView.tintColor = .systemTeal
             case "srt", "ass", "ssa", "vtt", "sub":
                 iconView.image = UIImage(systemName: "captions.bubble")
                 iconView.tintColor = .systemOrange

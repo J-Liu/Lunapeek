@@ -50,6 +50,7 @@ final class PlayerViewController: UIViewController {
     private var audioTrackPopupView: UIView?
     private var selectedAudioTrackID: Int?
     private var isSwitchingAudioTrack = false
+    private var lastValidProgress: Float = 0
 
     // Lock state
     private var isLocked = false
@@ -1455,7 +1456,11 @@ final class PlayerViewController: UIViewController {
         switch state {
         case .playing:
             // Clear the audio track switching flag - rebuild complete
-            isSwitchingAudioTrack = false
+            if isSwitchingAudioTrack {
+                isSwitchingAudioTrack = false
+                // Restore slider to cached position to ensure smooth transition
+                progressBar.value = lastValidProgress
+            }
             isPaused = false
             let image = UIImage(systemName: "pause.fill")?
                 .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
@@ -2203,22 +2208,30 @@ final class PlayerViewController: UIViewController {
         // Don't update progress while user is dragging the slider
         guard !isProgressDragging else { return }
 
-        // Don't update progress during audio track switch (prevents slider jump during rebuild)
-        guard !isSwitchingAudioTrack else { return }
-
         guard let engine = engine else { return }
 
         let current = engine.clock.currentTime
         let duration = engine.duration
 
-        guard duration > 0 else { return }
+        // Always update time label if duration is valid
+        if duration > 0 {
+            let currentStr = formatTime(current)
+            let durationStr = formatTime(duration)
+            timeLabel.text = "\(currentStr) / \(durationStr)"
+        }
 
-        let progress = (current / duration) * 100
-        progressBar.value = Float(progress)
-
-        let currentStr = formatTime(current)
-        let durationStr = formatTime(duration)
-        timeLabel.text = "\(currentStr) / \(durationStr)"
+        // During audio track switch, use cached progress to prevent visual jump
+        // But still update the cached value when we have valid data
+        if duration > 0 && current >= 0 {
+            let progress = Float((current / duration) * 100)
+            // Only cache and use if progress is reasonable (0-100 range)
+            if progress >= 0 && progress <= 100 {
+                lastValidProgress = progress
+                if !isSwitchingAudioTrack {
+                    progressBar.value = progress
+                }
+            }
+        }
     }
 
     private func updatePlayButton() {
