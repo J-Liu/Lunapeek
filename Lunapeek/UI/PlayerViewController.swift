@@ -1229,6 +1229,8 @@ final class PlayerViewController: UIViewController {
                 try await self?.engine?.load(url: self!.url)
                 self?.engine?.play()
                 self?.log("✅ AetherEngine loaded and started")
+                // Search and load external subtitles
+                await self?.loadExternalSubtitles()
             } catch {
                 self?.log("❌ AetherEngine load failed: \(error)")
                 DispatchQueue.main.async {
@@ -1236,6 +1238,136 @@ final class PlayerViewController: UIViewController {
                 }
             }
         }
+    }
+
+    // MARK: - External Subtitles
+
+    private let supportedSubtitleExtensions = ["srt", "ass", "ssa", "vtt", "sub"]
+
+    /// Search for subtitle files in the same directory as the video and load them
+    private func loadExternalSubtitles() async {
+        let videoURL = url
+
+        // Only process local files for now
+        guard videoURL.isFileURL else {
+            log("📝 Skipping subtitle search for non-local file")
+            return
+        }
+
+        let videoDirectory = videoURL.deletingLastPathComponent()
+        let videoName = videoURL.deletingPathExtension().lastPathComponent.lowercased()
+
+        log("📝 Searching for subtitles in: \(videoDirectory.path)")
+        log("📝 Video name for matching: \(videoName)")
+
+        do {
+            let files = try FileManager.default.contentsOfDirectory(at: videoDirectory, includingPropertiesForKeys: nil)
+
+            for fileURL in files {
+                let ext = fileURL.pathExtension.lowercased()
+                guard supportedSubtitleExtensions.contains(ext) else { continue }
+
+                let subtitleName = fileURL.deletingPathExtension().lastPathComponent.lowercased()
+
+                // Fuzzy match: subtitle name contains video name, or video name contains subtitle name
+                // Also match common patterns like "video.en.srt", "video.eng.srt"
+                if matchesSubtitle(videoName: videoName, subtitleName: subtitleName) {
+                    log("📝 Found matching subtitle: \(fileURL.lastPathComponent)")
+
+                    // Determine language from filename (e.g., "video.en.srt" -> "en")
+                    let language = extractLanguageFromFilename(fileURL.lastPathComponent, videoName: videoName)
+                    let name = fileURL.deletingPathExtension().lastPathComponent
+
+                    let track = ExternalSubtitleTrack(url: fileURL, name: name, language: language)
+                    let addedTrack = engine?.addExternalSubtitleTrack(track)
+                    if addedTrack != nil {
+                        log("✅ Loaded subtitle: \(fileURL.lastPathComponent)")
+                    }
+                }
+            }
+        } catch {
+            log("❌ Failed to search for subtitles: \(error)")
+        }
+    }
+
+    /// Check if subtitle name matches video name (fuzzy matching)
+    private func matchesSubtitle(videoName: String, subtitleName: String) -> Bool {
+        // Exact match
+        if subtitleName == videoName {
+            return true
+        }
+
+        // Subtitle starts with video name (e.g., "video.en.srt" matches "video")
+        if subtitleName.hasPrefix(videoName + ".") || subtitleName.hasPrefix(videoName + "_") {
+            return true
+        }
+
+        // Video name contains subtitle name (for shortened names)
+        if videoName.contains(subtitleName) || subtitleName.contains(videoName) {
+            return true
+        }
+
+        // Common patterns: video.en, video.eng, video.chs, video.cht, etc.
+        let commonSuffixes = [".en", ".eng", ".chs", ".cht", ".zh", ".zhs", ".zht", ".cn", ".sc", ".tc"]
+        for suffix in commonSuffixes {
+            if subtitleName == videoName + suffix {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /// Extract language code from subtitle filename
+    private func extractLanguageFromFilename(_ filename: String, videoName: String) -> String {
+        // Remove extension
+        let nameWithoutExt = (filename as NSString).deletingPathExtension
+
+        // If it matches video name exactly, return "und" (undetermined)
+        if nameWithoutExt.lowercased() == videoName {
+            return "und"
+        }
+
+        // Check for language suffix (e.g., "video.en" -> "en")
+        let commonLanguages = [
+            "en": "eng", "eng": "eng",
+            "chs": "chi", "cht": "chi", "zh": "chi", "zhs": "chi", "zht": "chi", "cn": "chi",
+            "sc": "chi", "tc": "chi",
+            "ja": "jpn", "jap": "jpn",
+            "ko": "kor", "kor": "kor",
+            "es": "spa", "spa": "spa",
+            "fr": "fre", "fre": "fre",
+            "de": "ger", "ger": "ger",
+            "pt": "por", "por": "por",
+            "ru": "rus", "rus": "rus",
+            "it": "ita", "ita": "ita",
+            "ar": "ara", "ara": "ara",
+            "hi": "hin", "hin": "hin",
+            "th": "tha", "tha": "tha",
+            "vi": "vie", "vie": "vie",
+            "id": "ind", "ind": "ind",
+            "ms": "may", "may": "may"
+        ]
+
+        // Try to find language suffix after video name
+        let lowerName = nameWithoutExt.lowercased()
+        let lowerVideo = videoName.lowercased()
+
+        if lowerName.hasPrefix(lowerVideo + ".") || lowerName.hasPrefix(lowerVideo + "_") {
+            let suffix = String(lowerName.dropFirst(lowerVideo.count + 1))
+            if let langCode = commonLanguages[suffix] {
+                return langCode
+            }
+        }
+
+        // Check if any known language appears in the filename
+        for (code, iso) in commonLanguages {
+            if lowerName.contains("." + code) || lowerName.contains("_" + code) {
+                return iso
+            }
+        }
+
+        return "und"
     }
 
     private func handleAetherEngineStateChanged(_ state: PlaybackState) {
