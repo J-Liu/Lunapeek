@@ -1439,6 +1439,15 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         let playerView = AetherPlayerView()
         playerView.frame = videoView.bounds
         playerView.translatesAutoresizingMaskIntoConstraints = false
+        // Set content mode based on aspect ratio setting
+        switch Settings.shared.defaultAspectRatio {
+        case .fit:
+            playerView.contentMode = .scaleAspectFit
+        case .fill:
+            playerView.contentMode = .scaleAspectFill
+        case .stretch:
+            playerView.contentMode = .scaleToFill
+        }
         videoView.addSubview(playerView)
         aetherPlayerView = playerView
 
