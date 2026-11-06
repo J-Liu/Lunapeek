@@ -909,7 +909,8 @@ final class PlayerViewController: UIViewController {
         // Add "None" option for muting audio
         let noneButton = UIButton(type: .system)
         let isNoneSelected = selectedAudioTrackID == nil
-        let noneTitle = isNoneSelected ? "✓ 无声" : "无声"
+        let noneText = NSLocalizedString("None", comment: "No audio track")
+        let noneTitle = isNoneSelected ? "✓ \(noneText)" : noneText
         noneButton.setTitle(noneTitle, for: .normal)
         noneButton.titleLabel?.font = .systemFont(ofSize: 16, weight: isNoneSelected ? .bold : .regular)
         noneButton.tintColor = isNoneSelected ? .systemBlue : .white
@@ -933,15 +934,14 @@ final class PlayerViewController: UIViewController {
     @objc private func audioTrackSelected(_ button: UIButton) {
         let trackID = button.tag
         if trackID == -1 {
-            // None selected - deselect audio track
-            // AetherEngine doesn't have a direct deselect, so we set selectedAudioTrackID to nil
+            // None selected - mute audio via AVPlayer volume
             selectedAudioTrackID = nil
-            log("Deselected audio track (mute)")
-            // Note: AetherEngine may not support actual audio mute via track selection
-            // This is a UI state that could be used for future implementation
+            engine?.currentAVPlayer?.volume = 0
+            log("Audio muted")
         } else {
             engine?.selectAudioTrack(index: trackID)
             selectedAudioTrackID = trackID
+            engine?.currentAVPlayer?.volume = 1
             log("Selected audio track: \(trackID)")
         }
         audioTrackPopupView?.removeFromSuperview()

@@ -159,3 +159,6 @@
 "Unsupported Format" = "不支援的格式";
 "This file format is not supported for playback." = "此檔案格式不支援播放。";
 "OK" = "確定";
+
+/* Audio Track */
+"None" = "無聲";

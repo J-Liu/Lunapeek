@@ -160,3 +160,6 @@
 "Unsupported Format" = "Unsupported Format";
 "This file format is not supported for playback." = "This file format is not supported for playback.";
 "OK" = "OK";
+
+/* Audio Track */
+"None" = "None";
