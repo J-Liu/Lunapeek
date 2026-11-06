@@ -1403,15 +1403,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         let playerView = AetherPlayerView()
         playerView.frame = videoView.bounds
         playerView.translatesAutoresizingMaskIntoConstraints = false
-        // Set content mode based on aspect ratio setting
-        switch Settings.shared.defaultAspectRatio {
-        case .fit:
-            playerView.contentMode = .scaleAspectFit
-        case .fill:
-            playerView.contentMode = .scaleAspectFill
-        case .stretch:
-            playerView.contentMode = .scaleToFill
-        }
         videoView.addSubview(playerView)
         aetherPlayerView = playerView
 
@@ -1424,6 +1415,9 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
         // Bind engine to view
         engine?.bind(view: playerView)
+
+        // Set video gravity based on aspect ratio setting
+        engine?.videoGravity = Settings.shared.defaultAspectRatio.videoGravity
 
         // Observe state changes
         engine?.$state
@@ -1650,19 +1644,65 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
             centerPlayButton.setImage(image, for: .normal)
             setPlayButtonIcon(isPlaying: false)
         case .ended:
-            debugLog("🎬 PlayerViewController: state is .ended, checking playlist")
-            // Handle playback end - go to next or close
-            if let playlist = playlist, currentIndex + 1 < playlist.count {
-                // Play next
-                debugLog("🎬 PlayerViewController: has next item in playlist")
-            } else {
-                debugLog("🎬 PlayerViewController: no next item, calling closeTapped()")
-                closeTapped()
-            }
+            debugLog("🎬 PlayerViewController: state is .ended, checking repeat mode")
+            handlePlaybackEnded()
         case .error(let message):
             showError(NSError(domain: "PlayerError", code: -1, userInfo: [NSLocalizedDescriptionKey: message]))
         default:
             break
+        }
+    }
+
+    /// Handle playback ended for AetherEngine
+    private func handlePlaybackEnded() {
+        guard let engine = engine else { return }
+
+        let repeatMode = Settings.shared.repeatMode
+        let autoPlayNext = Settings.shared.autoPlayNext
+
+        log("🎬 Playback ended, repeatMode=\(repeatMode.rawValue), autoPlayNext=\(autoPlayNext)")
+
+        switch repeatMode {
+        case .one:
+            // Repeat current video
+            Task {
+                await engine.seek(to: 0)
+                engine.play()
+            }
+            log("Repeating current video")
+
+        case .all:
+            // Check if there's a playlist
+            if let playlist = playlist {
+                if currentIndex + 1 < playlist.count {
+                    // Play next in playlist
+                    currentIndex += 1
+                    playFile(at: playlist[currentIndex])
+                    updateNavigationButtons()
+                } else {
+                    // At the end, loop back to beginning
+                    currentIndex = 0
+                    playFile(at: playlist[currentIndex])
+                    updateNavigationButtons()
+                }
+            } else {
+                // Single video, repeat it
+                Task {
+                    await engine.seek(to: 0)
+                    engine.play()
+                }
+            }
+
+        case .off:
+            // Check if there's a playlist with next item
+            if autoPlayNext, let playlist = playlist, currentIndex + 1 < playlist.count {
+                currentIndex += 1
+                playFile(at: playlist[currentIndex])
+                updateNavigationButtons()
+            } else {
+                // No next item, close player
+                closeTapped()
+            }
         }
     }
 
