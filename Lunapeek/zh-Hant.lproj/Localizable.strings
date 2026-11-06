@@ -162,3 +162,8 @@
 
 /* Audio Track */
 "None" = "無聲";
+
+/* Subtitle */
+"Subtitle File" = "字幕檔案";
+"Subtitle files can only be loaded during video playback, not played directly." = "字幕檔案只能在影片播放時載入，無法單獨播放。";
+"Load External Subtitle..." = "載入外掛字幕...";

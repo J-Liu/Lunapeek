@@ -184,7 +184,7 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
             if showThumbnails {
                 // Thumbnail mode: larger items
                 let itemWidth = (UIScreen.main.bounds.width - 44) / 2
-                layout.itemSize = CGSize(width: itemWidth, height: itemWidth * 0.75)
+                layout.itemSize = CGSize(width: itemWidth, height: itemWidth * 1.75)
             } else {
                 // Icon mode: 3 columns, taller cells for menu button
                 let itemWidth = (UIScreen.main.bounds.width - 56) / 3
@@ -452,7 +452,22 @@ extension MediaLibraryViewController: UICollectionViewDataSource, UICollectionVi
             collectionView.reloadItems(at: [indexPath])
         } else {
             let item = items[indexPath.item]
-            play(url: item.url)
+            // Check if it's a subtitle file
+            let ext = (item.name as NSString).pathExtension.lowercased()
+            let subtitleExtensions = ["srt", "ass", "ssa", "vtt", "sub"]
+
+            if subtitleExtensions.contains(ext) {
+                // Show alert for subtitle files
+                let alert = UIAlertController(
+                    title: NSLocalizedString("Subtitle File", comment: ""),
+                    message: NSLocalizedString("Subtitle files can only be loaded during video playback, not played directly.", comment: ""),
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
+                present(alert, animated: true)
+            } else {
+                play(url: item.url)
+            }
         }
     }
 
@@ -1108,7 +1123,7 @@ final class MediaItemCell: UICollectionViewCell {
             thumbnailView.topAnchor.constraint(equalTo: contentView.topAnchor),
             thumbnailView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             thumbnailView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            thumbnailView.heightAnchor.constraint(equalTo: contentView.heightAnchor, multiplier: 0.6),
+            thumbnailView.heightAnchor.constraint(equalTo: contentView.heightAnchor, multiplier: 0.8),
 
             titleLabel.topAnchor.constraint(equalTo: thumbnailView.bottomAnchor, constant: 6),
             titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),

@@ -13,7 +13,7 @@ import Combine
 // AV_TIME_BASE constant (microseconds per second)
 private let AV_TIME_BASE: Int64 = 1000000
 
-final class PlayerViewController: UIViewController {
+final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     private let url: URL
     private var engine: AetherEngine?
     private var avQueuePlayer: AVQueuePlayer?
@@ -37,6 +37,7 @@ final class PlayerViewController: UIViewController {
     private var volumeButton: UIButton!
     private var speedButton: UIButton!
     private var audioTrackButton: UIButton!
+    private var subtitleButton: UIButton!
     private var lockButton: UIButton!
     private var previousButton: UIButton!
     private var nextButton: UIButton!
@@ -48,7 +49,9 @@ final class PlayerViewController: UIViewController {
     private var volumeSliderView: UIView?
     private var speedPopupView: UIView?
     private var audioTrackPopupView: UIView?
+    private var subtitlePopupView: UIView?
     private var selectedAudioTrackID: Int?
+    private var selectedSubtitleTrackID: Int?
     private var isSwitchingAudioTrack = false
     private var lastValidProgress: Float = 0
 
@@ -435,6 +438,14 @@ final class PlayerViewController: UIViewController {
         nextButton.translatesAutoresizingMaskIntoConstraints = false
         buttonRow.addSubview(nextButton)
 
+        // Subtitle button
+        subtitleButton = UIButton(type: .system)
+        subtitleButton.setImage(UIImage(systemName: "captions.bubble"), for: .normal)
+        subtitleButton.tintColor = .white
+        subtitleButton.addTarget(self, action: #selector(subtitleTapped), for: .touchUpInside)
+        subtitleButton.translatesAutoresizingMaskIntoConstraints = false
+        buttonRow.addSubview(subtitleButton)
+
         // Lock button (far right)
         lockButton = UIButton(type: .system)
         lockButton.setImage(UIImage(systemName: "lock.open"), for: .normal)
@@ -545,10 +556,16 @@ final class PlayerViewController: UIViewController {
             forwardButton.heightAnchor.constraint(equalToConstant: 36),
 
             // Next
-            nextButton.trailingAnchor.constraint(equalTo: lockButton.leadingAnchor, constant: -4),
+            nextButton.trailingAnchor.constraint(equalTo: subtitleButton.leadingAnchor, constant: -4),
             nextButton.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
             nextButton.widthAnchor.constraint(equalToConstant: 36),
             nextButton.heightAnchor.constraint(equalToConstant: 36),
+
+            // Subtitle
+            subtitleButton.trailingAnchor.constraint(equalTo: lockButton.leadingAnchor, constant: -4),
+            subtitleButton.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
+            subtitleButton.widthAnchor.constraint(equalToConstant: 36),
+            subtitleButton.heightAnchor.constraint(equalToConstant: 36),
 
             // Lock (far right)
             lockButton.trailingAnchor.constraint(equalTo: buttonRow.trailingAnchor),
@@ -586,6 +603,8 @@ final class PlayerViewController: UIViewController {
         speedPopupView = nil
         audioTrackPopupView?.removeFromSuperview()
         audioTrackPopupView = nil
+        subtitlePopupView?.removeFromSuperview()
+        subtitlePopupView = nil
         isControlsHidden = true
         UIView.animate(withDuration: 0.3) {
             self.controlView.alpha = 0
@@ -950,6 +969,122 @@ final class PlayerViewController: UIViewController {
         }
         audioTrackPopupView?.removeFromSuperview()
         audioTrackPopupView = nil
+    }
+
+    // MARK: - Subtitle Selection
+
+    @objc private func subtitleTapped() {
+        resetControlsHideTimer()
+        if subtitlePopupView != nil {
+            subtitlePopupView?.removeFromSuperview()
+            subtitlePopupView = nil
+            return
+        }
+
+        guard let engine = engine else { return }
+        let subtitleTracks = engine.subtitleTracks
+
+        // Create a larger popup for subtitles
+        let popupWidth = min(view.bounds.width - 32, 400)
+        let popup = UIView()
+        popup.backgroundColor = UIColor.black.withAlphaComponent(0.9)
+        popup.layer.cornerRadius = 16
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(popup)
+        subtitlePopupView = popup
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        popup.addSubview(stack)
+
+        // "None" option
+        let noneButton = UIButton(type: .system)
+        let isNoneSelected = selectedSubtitleTrackID == nil
+        let noneText = NSLocalizedString("None", comment: "No subtitle track")
+        let noneTitle = isNoneSelected ? "✓ \(noneText)" : noneText
+        noneButton.setTitle(noneTitle, for: .normal)
+        noneButton.titleLabel?.font = .systemFont(ofSize: 17, weight: isNoneSelected ? .bold : .regular)
+        noneButton.tintColor = isNoneSelected ? .systemBlue : .white
+        noneButton.tag = -1
+        noneButton.addTarget(self, action: #selector(subtitleSelected(_:)), for: .touchUpInside)
+        noneButton.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(noneButton)
+
+        // Available subtitle tracks
+        for track in subtitleTracks {
+            let button = UIButton(type: .system)
+            let title: String
+            if let lang = track.language, !lang.isEmpty {
+                title = lang
+            } else if !track.name.isEmpty {
+                title = track.name
+            } else {
+                title = "Track \(track.id)"
+            }
+            let isSelected = selectedSubtitleTrackID == track.id
+            let displayTitle = isSelected ? "✓ \(title)" : title
+            button.setTitle(displayTitle, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 17, weight: isSelected ? .bold : .regular)
+            button.tintColor = isSelected ? .systemBlue : .white
+            button.tag = track.id
+            button.addTarget(self, action: #selector(subtitleSelected(_:)), for: .touchUpInside)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.contentHorizontalAlignment = .left
+            stack.addArrangedSubview(button)
+        }
+
+        // "Load External" option
+        let loadButton = UIButton(type: .system)
+        loadButton.setTitle(NSLocalizedString("Load External Subtitle...", comment: ""), for: .normal)
+        loadButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .regular)
+        loadButton.tintColor = .systemBlue
+        loadButton.tag = -2
+        loadButton.addTarget(self, action: #selector(subtitleSelected(_:)), for: .touchUpInside)
+        loadButton.translatesAutoresizingMaskIntoConstraints = false
+        loadButton.contentHorizontalAlignment = .left
+        stack.addArrangedSubview(loadButton)
+
+        NSLayoutConstraint.activate([
+            popup.centerXAnchor.constraint(equalTo: controlView.centerXAnchor),
+            popup.bottomAnchor.constraint(equalTo: subtitleButton.topAnchor, constant: -16),
+            popup.widthAnchor.constraint(equalToConstant: popupWidth),
+
+            stack.topAnchor.constraint(equalTo: popup.topAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: popup.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: popup.trailingAnchor, constant: -16),
+            stack.bottomAnchor.constraint(equalTo: popup.bottomAnchor, constant: -16)
+        ])
+    }
+
+    @objc private func subtitleSelected(_ button: UIButton) {
+        let trackID = button.tag
+
+        if trackID == -1 {
+            // None selected
+            selectedSubtitleTrackID = nil
+            engine?.clearSubtitle()
+            log("Subtitle cleared")
+        } else if trackID == -2 {
+            // Load external subtitle
+            loadExternalSubtitleManually()
+        } else {
+            // Select subtitle track
+            engine?.selectSubtitleTrack(index: trackID)
+            selectedSubtitleTrackID = trackID
+            log("Selected subtitle track: \(trackID)")
+        }
+
+        subtitlePopupView?.removeFromSuperview()
+        subtitlePopupView = nil
+    }
+
+    private func loadExternalSubtitleManually() {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item])
+        picker.allowsMultipleSelection = false
+        picker.delegate = self
+        present(picker, animated: true)
     }
 
     @objc private func lockTapped() {
@@ -1451,6 +1586,34 @@ final class PlayerViewController: UIViewController {
         return "und"
     }
 
+    // MARK: - Document Picker Delegate
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let subtitleURL = urls.first else { return }
+
+        let ext = subtitleURL.pathExtension.lowercased()
+        guard supportedSubtitleExtensions.contains(ext) else {
+            log("❌ Unsupported subtitle format: \(ext)")
+            return
+        }
+
+        // Start accessing security-scoped resource
+        guard subtitleURL.startAccessingSecurityScopedResource() else {
+            log("❌ Cannot access file")
+            return
+        }
+        defer {
+            subtitleURL.stopAccessingSecurityScopedResource()
+        }
+
+        let name = subtitleURL.deletingPathExtension().lastPathComponent
+        let track = ExternalSubtitleTrack(url: subtitleURL, name: name, language: "und")
+        if let addedTrack = engine?.addExternalSubtitleTrack(track) {
+            selectedSubtitleTrackID = addedTrack.id
+            log("✅ Loaded external subtitle: \(name)")
+        }
+    }
+
     private func handleAetherEngineStateChanged(_ state: PlaybackState) {
         debugLog("🎬 PlayerViewController: handleAetherEngineStateChanged: \(state)")
         switch state {
@@ -1751,12 +1914,14 @@ final class PlayerViewController: UIViewController {
 
     @objc private func toggleControls() {
         // Dismiss any slider popups first
-        if brightnessSliderView != nil || volumeSliderView != nil || speedPopupView != nil || audioTrackPopupView != nil {
+        if brightnessSliderView != nil || volumeSliderView != nil || speedPopupView != nil || audioTrackPopupView != nil || subtitlePopupView != nil {
             dismissSliderPopups()
             speedPopupView?.removeFromSuperview()
             speedPopupView = nil
             audioTrackPopupView?.removeFromSuperview()
             audioTrackPopupView = nil
+            subtitlePopupView?.removeFromSuperview()
+            subtitlePopupView = nil
             return
         }
 

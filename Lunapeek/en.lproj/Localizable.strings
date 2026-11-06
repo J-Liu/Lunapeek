@@ -163,3 +163,8 @@
 
 /* Audio Track */
 "None" = "None";
+
+/* Subtitle */
+"Subtitle File" = "Subtitle File";
+"Subtitle files can only be loaded during video playback, not played directly." = "Subtitle files can only be loaded during video playback, not played directly.";
+"Load External Subtitle..." = "Load External Subtitle...";
