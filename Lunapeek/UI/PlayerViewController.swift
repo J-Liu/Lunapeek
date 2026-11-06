@@ -13,9 +13,7 @@ private let AV_TIME_BASE: Int64 = 1000000
 
 final class PlayerViewController: UIViewController {
     private let url: URL
-    private var lpPlayerEngine: LPPlayerEngine?
-    private var lpVideoRenderer: LPVideoRenderer?
-    private var lpAudioRenderer: LPAudioRenderer?
+    private var mpvPlayer: MPVPlayer?
     private var avQueuePlayer: AVQueuePlayer?
     private var avPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
@@ -107,10 +105,8 @@ final class PlayerViewController: UIViewController {
         }
         // Stop proxy server
         proxyServer?.stop()
-        // Stop LPPlayerEngine
-        lpPlayerEngine?.stop()
-        lpVideoRenderer = nil
-        lpAudioRenderer = nil
+        // Stop MPVPlayer
+        mpvPlayer?.stop()
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
     }
@@ -784,14 +780,11 @@ final class PlayerViewController: UIViewController {
     @objc private func backwardTapped() {
         resetControlsHideTimer()
 
-        // Handle LPPlayerEngine
-        if let engine = lpPlayerEngine {
-            let currentSeconds = Double(engine.currentTime) / Double(AV_TIME_BASE)
+        // Handle MPVPlayer
+        if let player = mpvPlayer {
+            let currentSeconds = player.currentPlaybackTime
             let newSeconds = max(0, currentSeconds - 10)
-            let newMicroseconds = Int64(newSeconds * Double(AV_TIME_BASE))
-            Task.detached(priority: .userInitiated) {
-                await engine.seek(to: newMicroseconds)
-            }
+            player.seek(to: newSeconds)
             return
         }
 
@@ -806,15 +799,12 @@ final class PlayerViewController: UIViewController {
     @objc private func forwardTapped() {
         resetControlsHideTimer()
 
-        // Handle LPPlayerEngine
-        if let engine = lpPlayerEngine {
-            let currentSeconds = Double(engine.currentTime) / Double(AV_TIME_BASE)
-            let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
+        // Handle MPVPlayer
+        if let player = mpvPlayer {
+            let currentSeconds = player.currentPlaybackTime
+            let durationSeconds = player.totalDuration
             let newSeconds = min(durationSeconds, currentSeconds + 10)
-            let newMicroseconds = Int64(newSeconds * Double(AV_TIME_BASE))
-            Task.detached(priority: .userInitiated) {
-                await engine.seek(to: newMicroseconds)
-            }
+            player.seek(to: newSeconds)
             return
         }
 
@@ -910,16 +900,16 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Handle LPPlayerEngine
-        guard let engine = lpPlayerEngine else { return }
+        // Handle MPVPlayer
+        guard let player = mpvPlayer else { return }
 
-        switch engine.state {
+        switch player.state {
         case .ready, .paused:
-            engine.play()
+            player.play()
             isPaused = false
             setPlayButtonIcon(isPlaying: true)
         case .playing:
-            engine.pause()
+            player.pause()
             isPaused = true
             setPlayButtonIcon(isPlaying: false)
         default:
@@ -969,14 +959,9 @@ final class PlayerViewController: UIViewController {
         // Remove notification observer
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
 
-        // Stop and remove PlayerEngine if present
-        if let engine = lpPlayerEngine {
-            engine.stop()
-            lpVideoRenderer?.layer.removeFromSuperlayer()
-            lpPlayerEngine = nil
-            lpVideoRenderer = nil
-            lpAudioRenderer = nil
-        }
+        // Stop and remove MPVPlayer if present
+        mpvPlayer?.stop()
+        mpvPlayer = nil
 
         // Remove old player layer
         avPlayerLayer?.removeFromSuperlayer()
@@ -1095,7 +1080,7 @@ final class PlayerViewController: UIViewController {
 
         // Update video layer
         avPlayerLayer?.frame = videoView.bounds
-        lpVideoRenderer?.layer.frame = videoView.bounds
+        (mpvPlayer?.view as? MPVPlayerView)?.frame = videoView.bounds
     }
 
     private func exitFullscreen() {
@@ -1110,7 +1095,7 @@ final class PlayerViewController: UIViewController {
 
         // Update video layer
         avPlayerLayer?.frame = videoView.bounds
-        lpVideoRenderer?.layer.frame = videoView.bounds
+        (mpvPlayer?.view as? MPVPlayerView)?.frame = videoView.bounds
     }
 
     private func setupPlayer() {
@@ -1132,12 +1117,9 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // All other formats (MKV, AVI, WebM, etc.) - use LPPlayerEngine
-        // This provides: no seek barrier, hardware acceleration for supported codecs, unified code path
-        log("Using LPPlayerEngine for \(url.pathExtension)")
-        Task {
-            await setupLPPlayer()
-        }
+        // All other formats (MKV, AVI, WebM, etc.) - use MPVPlayer
+        log("Using MPVPlayer for \(url.pathExtension)")
+        setupMPVPlayer()
     }
 
     private func setupAVPlayer() {
@@ -1197,104 +1179,64 @@ final class PlayerViewController: UIViewController {
 
     }
 
-    private func setupLPPlayer() async {
-        log("🎬 Setting up LPPlayerEngine for: \(url.lastPathComponent)")
+    private func setupMPVPlayer() {
+        log("🎬 Setting up MPVPlayer for: \(url.lastPathComponent)")
 
-        // Create player engine
-        let engine = LPPlayerEngine()
-        lpPlayerEngine = engine
+        // Create player
+        let player = MPVPlayer()
+        mpvPlayer = player
 
-        // Create video renderer
-        let videoRenderer = LPVideoRenderer()
-        lpVideoRenderer = videoRenderer
+        // Add player view
+        let playerView = player.view
+        playerView.frame = videoView.bounds
+        playerView.translatesAutoresizingMaskIntoConstraints = false
+        videoView.addSubview(playerView)
 
-        // Add video renderer layer to view
-        videoRenderer.layer.frame = videoView.bounds
-        videoView.layer.addSublayer(videoRenderer.layer)
-
-        // Create audio renderer
-        let audioRenderer = LPAudioRenderer()
-        lpAudioRenderer = audioRenderer
-
-        // Connect audio clock to video renderer for synchronization
-        videoRenderer.setAudioClock(audioRenderer.audioClock)
-
-        // Connect renderers to engine
-        engine.videoRenderer = { [weak self] frame in
-            self?.lpVideoRenderer?.enqueue(frame)
-        }
-        engine.audioRenderer = { [weak self] frame in
-            self?.lpAudioRenderer?.enqueue(frame)
-        }
-        engine.videoRendererFlush = { [weak self] in
-            self?.lpVideoRenderer?.flush()
-        }
-        engine.audioRendererFlush = { [weak self] in
-            self?.lpAudioRenderer?.flush()
-        }
-        engine.videoRendererPlay = { [weak self] in
-            self?.lpVideoRenderer?.play()
-        }
-        engine.videoRendererPause = { [weak self] in
-            self?.lpVideoRenderer?.pause()
-        }
-        engine.audioRendererPlay = { [weak self] in
-            self?.lpAudioRenderer?.play()
-        }
-        engine.audioRendererPause = { [weak self] in
-            self?.lpAudioRenderer?.pause()
-        }
-        engine.videoRendererSetTime = { [weak self] time in
-            self?.lpVideoRenderer?.setVideoClockBase(time)
-        }
+        NSLayoutConstraint.activate([
+            playerView.topAnchor.constraint(equalTo: videoView.topAnchor),
+            playerView.leadingAnchor.constraint(equalTo: videoView.leadingAnchor),
+            playerView.trailingAnchor.constraint(equalTo: videoView.trailingAnchor),
+            playerView.bottomAnchor.constraint(equalTo: videoView.bottomAnchor)
+        ])
 
         // Observe state changes
-        engine.onStateChanged = { [weak self] state in
+        player.onStateChanged = { [weak self] state in
             DispatchQueue.main.async {
-                self?.handlePlayerStateChanged(state)
-                // Start audio renderer when playing
-                if state == .playing {
-                    self?.lpAudioRenderer?.play()
-                } else if state == .paused {
-                    self?.lpAudioRenderer?.pause()
-                }
+                self?.handleMPVPlayerStateChanged(state)
             }
         }
 
         // Observe progress updates
-        engine.onProgress = { [weak self] currentSeconds, durationSeconds in
+        player.onProgress = { [weak self] currentSeconds, durationSeconds in
             DispatchQueue.main.async {
-                self?.updateProgressFromEngine(current: currentSeconds, duration: durationSeconds)
+                self?.updateProgressFromMPVPlayer(current: currentSeconds, duration: durationSeconds)
             }
         }
 
-        do {
-            // Open the file
-            try await engine.open(url: url)
+        // Open the file
+        player.open(url: url)
 
-            // Start playback
-            engine.play()
-
-            log("✅ LPPlayerEngine started")
-        } catch {
-            log("❌ LPPlayerEngine failed: \(error)")
-            showError(error)
-        }
+        log("✅ MPVPlayer initialized")
     }
 
-    private func handlePlayerStateChanged(_ state: LPPlayerState) {
-        debugLog("🎬 PlayerViewController: handlePlayerStateChanged: \(state)")
+    private func handleMPVPlayerStateChanged(_ state: MPVPlayerState) {
+        debugLog("🎬 PlayerViewController: handleMPVPlayerStateChanged: \(state)")
         switch state {
+        case .ready:
+            // Auto-play when ready
+            mpvPlayer?.play()
         case .playing:
             isPaused = false
             let image = UIImage(systemName: "pause.fill")?
                 .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
             centerPlayButton.setImage(image, for: .normal)
+            setPlayButtonIcon(isPlaying: true)
         case .paused:
             isPaused = true
             let image = UIImage(systemName: "play.fill")?
                 .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
             centerPlayButton.setImage(image, for: .normal)
+            setPlayButtonIcon(isPlaying: false)
         case .ended:
             debugLog("🎬 PlayerViewController: state is .ended, checking playlist")
             // Handle playback end - go to next or close
@@ -1621,8 +1563,8 @@ final class PlayerViewController: UIViewController {
                 // Get current playback position
                 if let player = avQueuePlayer {
                     seekStartSeconds = player.currentTime().seconds
-                } else if let engine = lpPlayerEngine {
-                    seekStartSeconds = Double(engine.currentTime) / Double(AV_TIME_BASE)
+                } else if let player = mpvPlayer {
+                    seekStartSeconds = player.currentPlaybackTime
                 } else {
                     seekStartSeconds = 0
                 }
@@ -1648,8 +1590,8 @@ final class PlayerViewController: UIViewController {
                     let time = CMTime(seconds: clampedTime, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
                     let tolerance = CMTime(seconds: 1, preferredTimescale: 600)
                     player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
-                } else if let engine = lpPlayerEngine {
-                    // For LPPlayerEngine, only perform final seek on gesture end
+                } else if let player = mpvPlayer {
+                    // For MPVPlayer, only perform final seek on gesture end
                     // Just show indicator during gesture
                 }
             } else {
@@ -1680,19 +1622,15 @@ final class PlayerViewController: UIViewController {
                     self?.seekIndicatorView = nil
                 }
 
-                // For LPPlayerEngine, perform the final seek
-                if let engine = lpPlayerEngine {
+                // For MPVPlayer, perform the final seek
+                if let player = mpvPlayer {
                     let deltaX = location.x - initialPanX
                     let seekDelta = TimeInterval(deltaX * 0.5)
                     let newTime = seekStartSeconds + seekDelta
                     let duration = getDuration()
                     let clampedTime = max(0, min(duration, newTime))
-                    let targetMicroseconds = Int64(clampedTime * Double(AV_TIME_BASE))
 
-                    // Run seek on background thread to avoid blocking main thread
-                    Task.detached(priority: .userInitiated) {
-                        await engine.seek(to: targetMicroseconds)
-                    }
+                    player.seek(to: clampedTime)
                 }
             }
             isSeeking = false
@@ -1848,12 +1786,10 @@ final class PlayerViewController: UIViewController {
         proxyServer = nil
         deactivateAudioSession()
 
-        Task { [weak self] in
-            await self?.lpPlayerEngine?.stop()
-            await MainActor.run {
-                self?.dismiss(animated: true)
-            }
-        }
+        mpvPlayer?.stop()
+        mpvPlayer = nil
+
+        dismiss(animated: true)
     }
 
     @objc private func playPauseTapped() {
@@ -1877,16 +1813,16 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Handle LPPlayerEngine
-        guard let engine = lpPlayerEngine else { return }
+        // Handle MPVPlayer
+        guard let player = mpvPlayer else { return }
 
-        switch engine.state {
+        switch player.state {
         case .ready, .paused:
-            engine.play()
+            player.play()
             isPaused = false
             setPlayButtonIcon(isPlaying: true)
         case .playing:
-            engine.pause()
+            player.pause()
             isPaused = true
             setPlayButtonIcon(isPlaying: false)
         default:
@@ -1912,12 +1848,12 @@ final class PlayerViewController: UIViewController {
         // Only update UI during drag, don't seek yet
         resetControlsHideTimer()
 
-        // Handle LPPlayerEngine
-        if let engine = lpPlayerEngine {
-            let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
-            guard durationSeconds > 0 else { return }
+        // Handle MPVPlayer
+        if let player = mpvPlayer {
+            let duration = player.totalDuration
+            guard duration > 0 else { return }
 
-            let targetTime = durationSeconds * Double(progressBar.value) / 100
+            let targetTime = duration * Double(progressBar.value) / 100
             showSeekIndicator(seconds: targetTime)
             return
         }
@@ -1939,17 +1875,13 @@ final class PlayerViewController: UIViewController {
         // Perform actual seek when user releases the slider
         resetControlsHideTimer()
 
-        // Handle LPPlayerEngine
-        if let engine = lpPlayerEngine {
-            let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
-            guard durationSeconds > 0 else { return }
+        // Handle MPVPlayer
+        if let player = mpvPlayer {
+            let duration = player.totalDuration
+            guard duration > 0 else { return }
 
-            let targetTime = durationSeconds * Double(progressBar.value) / 100
-            let targetMicroseconds = Int64(targetTime * Double(AV_TIME_BASE))
-
-            Task.detached(priority: .userInitiated) {
-                await engine.seek(to: targetMicroseconds)
-            }
+            let targetTime = duration * Double(progressBar.value) / 100
+            player.seek(to: targetTime)
 
             showSeekIndicator(seconds: targetTime)
             return
@@ -1976,17 +1908,13 @@ final class PlayerViewController: UIViewController {
         let percentage = Double(location.x / progressBar.bounds.width)
         let clampedPercentage = max(0, min(1, percentage))
 
-        // Handle LPPlayerEngine
-        if let engine = lpPlayerEngine {
-            let durationSeconds = Double(engine.duration) / Double(AV_TIME_BASE)
-            guard durationSeconds > 0 else { return }
+        // Handle MPVPlayer
+        if let player = mpvPlayer {
+            let duration = player.totalDuration
+            guard duration > 0 else { return }
 
-            let targetTime = durationSeconds * clampedPercentage
-            let targetMicroseconds = Int64(targetTime * Double(AV_TIME_BASE))
-
-            Task.detached(priority: .userInitiated) {
-                await engine.seek(to: targetMicroseconds)
-            }
+            let targetTime = duration * clampedPercentage
+            player.seek(to: targetTime)
 
             // Update slider visual
             progressBar.value = Float(clampedPercentage * 100)
@@ -2012,10 +1940,10 @@ final class PlayerViewController: UIViewController {
         showSeekIndicator(seconds: targetTime)
     }
 
-    /// Get duration - use LPPlayerEngine or AVPlayer duration
+    /// Get duration - use MPVPlayer or AVPlayer duration
     private func getDuration() -> Double {
-        if let engine = lpPlayerEngine, engine.duration > 0 {
-            return Double(engine.duration) / Double(AV_TIME_BASE)
+        if let player = mpvPlayer, player.totalDuration > 0 {
+            return player.totalDuration
         }
         return avQueuePlayer?.currentItem?.duration.seconds ?? 0
     }
@@ -2039,8 +1967,8 @@ final class PlayerViewController: UIViewController {
         }
     }
 
-    /// Update progress from LPPlayerEngine
-    private func updateProgressFromEngine(current: Double, duration: Double) {
+    /// Update progress from MPVPlayer
+    private func updateProgressFromMPVPlayer(current: Double, duration: Double) {
         // Don't update progress while user is dragging the slider
         guard !isProgressDragging else { return }
 
@@ -2058,7 +1986,7 @@ final class PlayerViewController: UIViewController {
         let isPlaying: Bool
         if let player = avQueuePlayer {
             isPlaying = player.timeControlStatus == .playing
-        } else if lpPlayerEngine?.state == .playing {
+        } else if let player = mpvPlayer, player.state == .playing {
             isPlaying = true
         } else {
             isPlaying = false
@@ -2108,7 +2036,6 @@ final class PlayerViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        lpVideoRenderer?.layer.frame = videoView.bounds
         avPlayerLayer?.frame = videoView.bounds
     }
 }
