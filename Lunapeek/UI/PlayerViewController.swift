@@ -36,6 +36,7 @@ final class PlayerViewController: UIViewController {
     private var brightnessButton: UIButton!
     private var volumeButton: UIButton!
     private var speedButton: UIButton!
+    private var audioTrackButton: UIButton!
     private var lockButton: UIButton!
     private var previousButton: UIButton!
     private var nextButton: UIButton!
@@ -46,6 +47,7 @@ final class PlayerViewController: UIViewController {
     private var brightnessSliderView: UIView?
     private var volumeSliderView: UIView?
     private var speedPopupView: UIView?
+    private var audioTrackPopupView: UIView?
 
     // Lock state
     private var isLocked = false
@@ -403,6 +405,14 @@ final class PlayerViewController: UIViewController {
         speedButton.translatesAutoresizingMaskIntoConstraints = false
         buttonRow.addSubview(speedButton)
 
+        // Audio track button
+        audioTrackButton = UIButton(type: .system)
+        audioTrackButton.setImage(UIImage(systemName: "speaker.wave.2"), for: .normal)
+        audioTrackButton.tintColor = .white
+        audioTrackButton.addTarget(self, action: #selector(audioTrackTapped), for: .touchUpInside)
+        audioTrackButton.translatesAutoresizingMaskIntoConstraints = false
+        buttonRow.addSubview(audioTrackButton)
+
         // Previous button
         previousButton = UIButton(type: .system)
         previousButton.setImage(UIImage(systemName: "backward.end.fill"), for: .normal)
@@ -534,8 +544,14 @@ final class PlayerViewController: UIViewController {
             speedButton.widthAnchor.constraint(equalToConstant: 40),
             speedButton.heightAnchor.constraint(equalToConstant: 36),
 
+            // Audio track
+            audioTrackButton.leadingAnchor.constraint(equalTo: speedButton.trailingAnchor, constant: 4),
+            audioTrackButton.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
+            audioTrackButton.widthAnchor.constraint(equalToConstant: 36),
+            audioTrackButton.heightAnchor.constraint(equalToConstant: 36),
+
             // Previous
-            previousButton.leadingAnchor.constraint(equalTo: speedButton.trailingAnchor, constant: 4),
+            previousButton.leadingAnchor.constraint(equalTo: audioTrackButton.trailingAnchor, constant: 4),
             previousButton.centerYAnchor.constraint(equalTo: buttonRow.centerYAnchor),
             previousButton.widthAnchor.constraint(equalToConstant: 36),
             previousButton.heightAnchor.constraint(equalToConstant: 36),
@@ -603,6 +619,8 @@ final class PlayerViewController: UIViewController {
         dismissSliderPopups()
         speedPopupView?.removeFromSuperview()
         speedPopupView = nil
+        audioTrackPopupView?.removeFromSuperview()
+        audioTrackPopupView = nil
         isControlsHidden = true
         UIView.animate(withDuration: 0.3) {
             self.controlView.alpha = 0
@@ -873,6 +891,74 @@ final class PlayerViewController: UIViewController {
         speedButton.setTitle(rate == 1.0 ? "1x" : "\(rate)x", for: .normal)
         speedPopupView?.removeFromSuperview()
         speedPopupView = nil
+    }
+
+    @objc private func audioTrackTapped() {
+        resetControlsHideTimer()
+        if audioTrackPopupView != nil {
+            audioTrackPopupView?.removeFromSuperview()
+            audioTrackPopupView = nil
+            return
+        }
+
+        guard let engine = engine else { return }
+        let audioTracks = engine.audioTracks
+
+        guard !audioTracks.isEmpty else {
+            log("No audio tracks available")
+            return
+        }
+
+        let popup = UIView()
+        popup.backgroundColor = UIColor.black.withAlphaComponent(0.85)
+        popup.layer.cornerRadius = 12
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        controlView.addSubview(popup)
+        audioTrackPopupView = popup
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        popup.addSubview(stack)
+
+        for track in audioTracks {
+            let button = UIButton(type: .system)
+            let title: String
+            if let lang = track.language, !lang.isEmpty {
+                title = lang
+            } else if !track.name.isEmpty {
+                title = track.name
+            } else {
+                title = "Track \(track.id)"
+            }
+            button.setTitle(title, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 16, weight: .regular)
+            button.tintColor = .white
+            button.tag = track.id
+            button.addTarget(self, action: #selector(audioTrackSelected(_:)), for: .touchUpInside)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            stack.addArrangedSubview(button)
+        }
+
+        NSLayoutConstraint.activate([
+            popup.leadingAnchor.constraint(equalTo: audioTrackButton.leadingAnchor),
+            popup.bottomAnchor.constraint(equalTo: audioTrackButton.topAnchor, constant: -16),
+            popup.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+
+            stack.topAnchor.constraint(equalTo: popup.topAnchor, constant: 8),
+            stack.leadingAnchor.constraint(equalTo: popup.leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: popup.trailingAnchor, constant: -8),
+            stack.bottomAnchor.constraint(equalTo: popup.bottomAnchor, constant: -8)
+        ])
+    }
+
+    @objc private func audioTrackSelected(_ button: UIButton) {
+        let trackID = button.tag
+        engine?.selectAudioTrack(index: trackID)
+        log("Selected audio track: \(trackID)")
+        audioTrackPopupView?.removeFromSuperview()
+        audioTrackPopupView = nil
     }
 
     @objc private func lockTapped() {
@@ -1664,10 +1750,12 @@ final class PlayerViewController: UIViewController {
 
     @objc private func toggleControls() {
         // Dismiss any slider popups first
-        if brightnessSliderView != nil || volumeSliderView != nil || speedPopupView != nil {
+        if brightnessSliderView != nil || volumeSliderView != nil || speedPopupView != nil || audioTrackPopupView != nil {
             dismissSliderPopups()
             speedPopupView?.removeFromSuperview()
             speedPopupView = nil
+            audioTrackPopupView?.removeFromSuperview()
+            audioTrackPopupView = nil
             return
         }
 
