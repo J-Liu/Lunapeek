@@ -188,9 +188,9 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 4:
             break // Audio section - toggle only
         case 5:
-            if indexPath.row == 0 {
+            if indexPath.row == 1 {
                 showRepeatModePicker()
-            } else if indexPath.row == 1 {
+            } else if indexPath.row == 2 {
                 showExitBehaviorPicker()
             }
         case 6:
