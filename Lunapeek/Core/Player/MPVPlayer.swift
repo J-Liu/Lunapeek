@@ -82,19 +82,11 @@ public final class MPVPlayer {
         // Request log messages from mpv
         mpv_request_log_messages(handle, "debug")
 
-        // Set options for iOS - following KSPlayer approach
+        // Set options for iOS
         log("Setting options...")
 
-        // Pass the view's layer to mpv for rendering
-        if let playerView = playerView {
-            var layer = playerView.layer
-            let widResult = mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &layer)
-            log("Set wid option result: \(widResult)")
-        }
-
-        // Use 'gpu' video output with OpenGL (vulkan/moltenvk not compiled in this build)
-        setOption("vo", value: "gpu")
-        // Don't specify gpu-api/gpu-context - let mpv auto-detect iOS OpenGL
+        // Use 'libmpv' for rendering control - let us handle the rendering
+        setOption("vo", value: "libmpv")
         setOption("hwdec", value: "videotoolbox")
         setOption("vid", value: "auto")
         setOption("aid", value: "auto")
