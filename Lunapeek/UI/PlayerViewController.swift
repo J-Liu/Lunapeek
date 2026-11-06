@@ -1905,7 +1905,8 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback, options: [.defaultToSpeaker, .allowAirPlay])
+            // Note: defaultToSpeaker is only valid with playAndRecord category, not playback
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
             try session.setActive(true)
 
             // Enable remote control events for Dynamic Island
