@@ -72,7 +72,13 @@ final class Settings {
 
     // MARK: - Playback
     var autoPlayNext: Bool {
-        get { defaults.bool(forKey: Key.autoPlayNext) }
+        get {
+            // Default: false
+            if defaults.object(forKey: Key.autoPlayNext) == nil {
+                return false
+            }
+            return defaults.bool(forKey: Key.autoPlayNext)
+        }
         set { defaults.set(newValue, forKey: Key.autoPlayNext) }
     }
 
@@ -99,9 +105,6 @@ final class Settings {
 
     private init() {
         // Set defaults for boolean values (UserDefaults returns false for missing keys)
-        if defaults.object(forKey: Key.autoPlayNext) == nil {
-            defaults.set(true, forKey: Key.autoPlayNext)
-        }
         if defaults.object(forKey: Key.backgroundPlay) == nil {
             defaults.set(true, forKey: Key.backgroundPlay)
         }

@@ -50,7 +50,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 2: return 4 // File Browser
         case 3: return 1 // Video
         case 4: return 1 // Audio
-        case 5: return 2 // Playback
+        case 5: return 3 // Playback
         case 6: return 2 // About
         default: return 0
         }
@@ -129,11 +129,17 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 5: // Playback
             switch indexPath.row {
             case 0:
+                cell.textLabel?.text = NSLocalizedString("Auto Play Next", comment: "")
+                let toggle = UISwitch()
+                toggle.isOn = Settings.shared.autoPlayNext
+                toggle.addTarget(self, action: #selector(autoPlayNextChanged(_:)), for: .valueChanged)
+                cell.accessoryView = toggle
+            case 1:
                 cell.textLabel?.text = NSLocalizedString("Repeat Mode", comment: "")
                 cell.detailTextLabel?.text = Settings.shared.repeatMode.displayName
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
-            case 1:
+            case 2:
                 cell.textLabel?.text = NSLocalizedString("Exit Behavior", comment: "")
                 cell.detailTextLabel?.text = Settings.shared.exitBehavior.displayName
                 cell.selectionStyle = .default

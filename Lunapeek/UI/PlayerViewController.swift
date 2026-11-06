@@ -1229,8 +1229,10 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
         // Create new AVQueuePlayer with queue from current position
         let player = AVQueuePlayer(items: items)
-        let shouldAutoPlay = Settings.shared.autoPlayNext
-        player.actionAtItemEnd = shouldAutoPlay ? .advance : .pause
+        // Auto-advance for Repeat All, or Repeat Off with autoPlayNext
+        let shouldAdvance = Settings.shared.repeatMode == .all ||
+            (Settings.shared.repeatMode == .off && Settings.shared.autoPlayNext)
+        player.actionAtItemEnd = shouldAdvance ? .advance : .pause
         avQueuePlayer = player
 
         // Only activate audio session, don't reconfigure in background
@@ -1364,9 +1366,10 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         let player = AVQueuePlayer(items: items)
         avQueuePlayer = player
 
-        // We handle repeat/auto-play logic ourselves
-        let shouldAutoPlay = Settings.shared.autoPlayNext
-        player.actionAtItemEnd = shouldAutoPlay ? .advance : .pause
+        // Auto-advance for Repeat All, or Repeat Off with autoPlayNext
+        let shouldAdvance = Settings.shared.repeatMode == .all ||
+            (Settings.shared.repeatMode == .off && Settings.shared.autoPlayNext)
+        player.actionAtItemEnd = shouldAdvance ? .advance : .pause
 
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.frame = videoView.bounds
@@ -1668,31 +1671,27 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         case .one:
             // Repeat current video - need to reload since .ended is terminal state
             log("Repeating current video (reload)")
-            // For AetherEngine, .ended is terminal - need to stop and reload
             engine.stop()
             Task { [weak self] in
                 guard let self else { return }
-                // Small delay to ensure clean stop
-                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+                try? await Task.sleep(nanoseconds: 100_000_000)
                 await self.setupAetherEngineWithCurrentURL()
             }
 
         case .all:
-            // Check if there's a playlist
+            // Auto-play next video, loop at end
             if let playlist = playlist {
                 if currentIndex + 1 < playlist.count {
-                    // Play next in playlist
                     currentIndex += 1
                     playFile(at: playlist[currentIndex])
                     updateNavigationButtons()
                 } else {
-                    // At the end, loop back to beginning
                     currentIndex = 0
                     playFile(at: playlist[currentIndex])
                     updateNavigationButtons()
                 }
             } else {
-                // Single video, repeat it - need to reload
+                // Single video, repeat it
                 log("Repeating single video (reload)")
                 engine.stop()
                 Task { [weak self] in
@@ -1703,13 +1702,12 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
             }
 
         case .off:
-            // Check if there's a playlist with next item
+            // Auto-play next if enabled and available
             if autoPlayNext, let playlist = playlist, currentIndex + 1 < playlist.count {
                 currentIndex += 1
                 playFile(at: playlist[currentIndex])
                 updateNavigationButtons()
             } else {
-                // No next item, close player
                 closeTapped()
             }
         }
@@ -1762,8 +1760,10 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         let player = AVQueuePlayer(items: items)
         avQueuePlayer = player
 
-        let shouldAutoPlay = Settings.shared.autoPlayNext
-        player.actionAtItemEnd = shouldAutoPlay ? .advance : .pause
+        // Auto-advance for Repeat All, or Repeat Off with autoPlayNext
+        let shouldAdvance = Settings.shared.repeatMode == .all ||
+            (Settings.shared.repeatMode == .off && Settings.shared.autoPlayNext)
+        player.actionAtItemEnd = shouldAdvance ? .advance : .pause
 
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.frame = videoView.bounds
@@ -1806,30 +1806,22 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
             log("Repeating current video")
 
         case .all:
-            // AVQueuePlayer auto-advances via actionAtItemEnd = .advance
-            // Only if autoPlayNext is enabled
-            if autoPlayNext {
-                if let playlist = playlist, currentIndex + 1 >= playlist.count {
-                    // At the end, loop back to beginning
-                    currentIndex = 0
-                    rebuildQueueAndPlay()
-                } else {
-                    currentIndex += 1
-                    updateNavigationButtons()
-                    resetControlsHideTimer()
-                    log("▶️ AVQueuePlayer auto-advancing (all): index \(currentIndex)")
-                }
+            // Auto-play next video, loop at end
+            if let playlist = playlist, currentIndex + 1 >= playlist.count {
+                // At the end, loop back to beginning
+                currentIndex = 0
+                rebuildQueueAndPlay()
             } else {
-                log("⏹️ Auto-play disabled, stopping at index \(currentIndex)")
+                currentIndex += 1
+                updateNavigationButtons()
+                resetControlsHideTimer()
+                log("▶️ AVQueuePlayer auto-advancing (all): index \(currentIndex)")
             }
 
         case .off:
-            // Auto play next if enabled and there are more videos
+            // Auto-play next if enabled and available
             if autoPlayNext, let playlist = playlist, currentIndex + 1 < playlist.count {
-                // Let AVQueuePlayer auto-advance (actionAtItemEnd = .advance)
-                // Just update currentIndex for tracking
                 currentIndex += 1
-
                 updateNavigationButtons()
                 resetControlsHideTimer()
                 log("▶️ AVQueuePlayer will auto-advance to index \(currentIndex)")
@@ -1863,8 +1855,10 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         }
 
         let player = AVQueuePlayer(items: items)
-        let shouldAutoPlay = Settings.shared.autoPlayNext
-        player.actionAtItemEnd = shouldAutoPlay ? .advance : .pause
+        // Auto-advance for Repeat All, or Repeat Off with autoPlayNext
+        let shouldAdvance = Settings.shared.repeatMode == .all ||
+            (Settings.shared.repeatMode == .off && Settings.shared.autoPlayNext)
+        player.actionAtItemEnd = shouldAdvance ? .advance : .pause
         avQueuePlayer = player
 
         let playerLayer = AVPlayerLayer(player: player)
