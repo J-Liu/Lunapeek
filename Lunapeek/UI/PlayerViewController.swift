@@ -82,9 +82,7 @@ final class PlayerViewController: UIViewController {
     }
 
     // Debug log view
-    private var debugTextView: UITextView!
     private var logEntries: [String] = []
-    private var isDebugVisible = false
 
     // Combine subscriptions
     private var cancellables = Set<AnyCancellable>()
@@ -132,8 +130,6 @@ final class PlayerViewController: UIViewController {
                 guard let self else { return }
                 self.logEntries.append(entry)
                 if self.logEntries.count > 50 { self.logEntries.removeFirst() }
-                self.debugTextView?.text = self.logEntries.joined(separator: "\n")
-                self.debugTextView?.scrollToBottom()
             }
         }
         setupUI()
@@ -277,17 +273,6 @@ final class PlayerViewController: UIViewController {
         videoView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(videoView)
 
-        // Debug log view (initially hidden)
-        debugTextView = UITextView()
-        debugTextView.backgroundColor = UIColor.black.withAlphaComponent(0.9)
-        debugTextView.textColor = .green
-        debugTextView.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-        debugTextView.isEditable = false
-        debugTextView.isSelectable = true
-        debugTextView.translatesAutoresizingMaskIntoConstraints = false
-        debugTextView.isHidden = true
-        view.addSubview(debugTextView)
-
         // Control overlay
         controlView = UIView(frame: .zero)
         controlView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
@@ -333,14 +318,6 @@ final class PlayerViewController: UIViewController {
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         controlView.addSubview(closeButton)
         updateRightTopButton()
-
-        // Debug button
-        let debugButton = UIButton(type: .system)
-        debugButton.setImage(UIImage(systemName: "ladybug"), for: .normal)
-        debugButton.tintColor = .yellow
-        debugButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
-        debugButton.translatesAutoresizingMaskIntoConstraints = false
-        controlView.addSubview(debugButton)
 
         // Bottom controls container
         let bottomControls = UIView()
@@ -473,11 +450,6 @@ final class PlayerViewController: UIViewController {
             videoView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             videoView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            debugTextView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 60),
-            debugTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            debugTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
-            debugTextView.heightAnchor.constraint(equalToConstant: 200),
-
             controlView.topAnchor.constraint(equalTo: view.topAnchor),
             controlView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             controlView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -502,11 +474,6 @@ final class PlayerViewController: UIViewController {
             closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 44),
             closeButton.heightAnchor.constraint(equalToConstant: 44),
-
-            debugButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            debugButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -8),
-            debugButton.widthAnchor.constraint(equalToConstant: 44),
-            debugButton.heightAnchor.constraint(equalToConstant: 44),
 
             // Bottom controls
             bottomControls.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
@@ -598,11 +565,6 @@ final class PlayerViewController: UIViewController {
         } else {
             closeButton.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
         }
-    }
-
-    @objc private func toggleDebug() {
-        isDebugVisible.toggle()
-        debugTextView.isHidden = !isDebugVisible
     }
 
     // MARK: - Auto-hide controls
@@ -2266,13 +2228,9 @@ final class PlayerViewController: UIViewController {
     private func showError(_ error: Error) {
         let message = error.localizedDescription
 
-        // Show error and force show debug log
-        isDebugVisible = true
-        debugTextView.isHidden = false
-
         let alert = UIAlertController(
             title: "Playback Error",
-            message: message + "\n\nSee debug log above for details",
+            message: message,
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
