@@ -92,9 +92,9 @@ public final class MPVPlayer {
             log("Set wid option result: \(widResult)")
         }
 
-        setOption("vo", value: "gpu-next")
-        setOption("gpu-api", value: "vulkan")
-        setOption("gpu-context", value: "moltenvk")
+        // Use 'gpu' video output with OpenGL (vulkan/moltenvk not compiled in this build)
+        setOption("vo", value: "gpu")
+        // Don't specify gpu-api/gpu-context - let mpv auto-detect iOS OpenGL
         setOption("hwdec", value: "videotoolbox")
         setOption("vid", value: "auto")
         setOption("aid", value: "auto")
