@@ -299,7 +299,7 @@ final class MediaLibraryViewController: UIViewController, UIGestureRecognizerDel
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         var newItems: [LocalMediaItem] = []
 
-        let videoExtensions = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv"]
+        let videoExtensions = ["mp4", "mov", "avi", "mkv", "webm", "m4v", "flv", "srt", "ass", "ssa", "vtt", "sub"]
         let audioExtensions = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "wma"]
 
         let extensions = mediaType == .video ? videoExtensions : audioExtensions
@@ -1155,8 +1155,17 @@ final class MediaItemCell: UICollectionViewCell {
             detailLabel.text = nil
         }
 
-        // Generate thumbnail for video files
-        if mediaType == .video {
+        // Check for subtitle files
+        let ext = (item.name as NSString).pathExtension.lowercased()
+        let subtitleExtensions = ["srt", "ass", "ssa", "vtt", "sub"]
+
+        if subtitleExtensions.contains(ext) {
+            // Subtitle: show icon
+            thumbnailView.image = UIImage(systemName: "captions.bubble")
+            thumbnailView.tintColor = .systemOrange
+            thumbnailView.contentMode = .center
+        } else if mediaType == .video {
+            // Generate thumbnail for video files
             generateThumbnail(for: item.url)
         } else {
             // Audio: show icon
@@ -1286,13 +1295,21 @@ final class IconItemCell: UICollectionViewCell {
         let config = UIImage.SymbolConfiguration(pointSize: 48, weight: .regular)
         iconView.preferredSymbolConfiguration = config
 
-        let iconName = mediaType == .video ? "video.fill" : "music.note"
-        iconView.image = UIImage(systemName: iconName)
+        // Check for subtitle files
+        let ext = (item.name as NSString).pathExtension.lowercased()
+        let subtitleExtensions = ["srt", "ass", "ssa", "vtt", "sub"]
 
-        if mediaType == .video {
-            iconView.tintColor = .systemPurple
+        if subtitleExtensions.contains(ext) {
+            iconView.image = UIImage(systemName: "captions.bubble")
+            iconView.tintColor = .systemOrange
         } else {
-            iconView.tintColor = .systemPink
+            let iconName = mediaType == .video ? "video.fill" : "music.note"
+            iconView.image = UIImage(systemName: iconName)
+            if mediaType == .video {
+                iconView.tintColor = .systemPurple
+            } else {
+                iconView.tintColor = .systemPink
+            }
         }
     }
 }
