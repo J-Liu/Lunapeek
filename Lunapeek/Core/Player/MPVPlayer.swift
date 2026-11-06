@@ -80,8 +80,8 @@ public final class MPVPlayer {
         // Set options for iOS
         log("Setting options...")
         setOption("hwdec", value: "auto-safe")
-        setOption("vo", value: "gpu")
-        setOption("vid", value: "auto")
+        setOption("vo", value: "null")  // Test without video output
+        setOption("vid", value: "no")   // Disable video
         setOption("aid", value: "auto")
         setOption("keep-open", value: "yes")
 
