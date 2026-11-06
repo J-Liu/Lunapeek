@@ -8,7 +8,7 @@ import Mpv
 import UIKit
 
 /// Player state
-public enum MPVPlayerState {
+public enum MPVPlayerState: Equatable {
     case idle
     case loading
     case ready
@@ -106,9 +106,14 @@ public final class MPVPlayer {
 
         // Load file
         let path = url.isFileURL ? url.path : url.absoluteString
-        var args = [strdup(path), UnsafeMutablePointer<CChar>(nil)]
+        var args: [UnsafePointer<CChar>?] = [
+            UnsafePointer(strdup(path)),
+            nil
+        ]
         let result = mpv_command(handle, &args)
-        free(args[0])
+        if let ptr = args[0] {
+            free(UnsafeMutableRawPointer(mutating: ptr))
+        }
 
         if result < 0 {
             let error = String(cString: mpv_error_string(result))
@@ -147,17 +152,17 @@ public final class MPVPlayer {
         isSeeking = true
         let timeStr = String(format: "%.2f", time)
 
-        var args: [UnsafeMutablePointer<CChar>?] = [
-            strdup("seek"),
-            strdup(timeStr),
-            strdup("absolute"),
+        var args: [UnsafePointer<CChar>?] = [
+            UnsafePointer(strdup("seek")),
+            UnsafePointer(strdup(timeStr)),
+            UnsafePointer(strdup("absolute")),
             nil
         ]
 
         mpv_command_async(handle, 0, &args)
 
         for i in 0..<3 {
-            free(args[i])
+            free(UnsafeMutablePointer(mutating: args[i]))
         }
     }
 

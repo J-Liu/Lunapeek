@@ -1102,13 +1102,6 @@ final class PlayerViewController: UIViewController {
         log("URL: \(url.absoluteString)")
         log("Extension: \(url.pathExtension)")
 
-        // Check if format is completely unsupported
-        if DemuxerFactory.isUnsupported(url) {
-            log("Unsupported format: \(url.pathExtension)")
-            showUnsupportedFormatAlert()
-            return
-        }
-
         // Native formats (MP4/MOV) - use AVPlayer directly for optimal performance
         if (url.pathExtension.lowercased() == "mp4" || url.pathExtension.lowercased() == "mov")
             && (url.scheme == "http" || url.scheme == "https" || url.isFileURL) {
@@ -1995,19 +1988,7 @@ final class PlayerViewController: UIViewController {
     }
 
     private func showError(_ error: Error) {
-        var message = error.localizedDescription
-        if let demuxerError = error as? DemuxerError {
-            switch demuxerError {
-            case .failedToLoadTracks:
-                message = "Failed to load video tracks"
-            case .failedToStartReading(let innerError):
-                message = "Failed to start reading: \(innerError?.localizedDescription ?? "unknown")"
-            case .readerError(let innerError):
-                message = "Reader error: \(innerError?.localizedDescription ?? "unknown")"
-            case .noAsset:
-                message = "No asset loaded"
-            }
-        }
+        let message = error.localizedDescription
 
         // Show error and force show debug log
         isDebugVisible = true
