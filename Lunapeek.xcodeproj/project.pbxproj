@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0814B82030778AFD00E664AE /* SMBClient in Frameworks */ = {isa = PBXBuildFile; productRef = 08A1B2C130744F0000000001 /* SMBClient */; };
 		0814B82130778AFD00E664AE /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 08A1B2C130744F0000000002 /* Citadel */; };
+		0814B82230778AFD00E664AE /* AetherEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 08A1B2C130744F0000000003 /* AetherEngine */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -92,6 +93,7 @@
 			files = (
 				0814B82130778AFD00E664AE /* Citadel in Frameworks */,
 				0814B82030778AFD00E664AE /* SMBClient in Frameworks */,
+				0814B82230778AFD00E664AE /* AetherEngine in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -145,6 +147,7 @@
 			packageProductDependencies = (
 				08A1B2C130744F0000000001 /* SMBClient */,
 				08A1B2C130744F0000000002 /* Citadel */,
+				08A1B2C130744F0000000003 /* AetherEngine */,
 			);
 			productName = Lunapeek;
 			productReference = 08F3D6BE30733F2100B0FE4B /* Lunapeek.app */;
@@ -179,6 +182,7 @@
 			packageReferences = (
 				08A1B2C230744F0000000001 /* XCRemoteSwiftPackageReference "SMBClient" */,
 				08A1B2C230744F0000000002 /* XCRemoteSwiftPackageReference "Citadel" */,
+				08A1B2C230744F0000000003 /* XCRemoteSwiftPackageReference "AetherEngine" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 08F3D6BF30733F2100B0FE4B /* Products */;
@@ -444,6 +448,14 @@
 				minimumVersion = 0.8.0;
 			};
 		};
+		08A1B2C230744F0000000003 /* XCRemoteSwiftPackageReference "AetherEngine" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/superuser404notfound/AetherEngine";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.58.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -456,6 +468,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 08A1B2C230744F0000000002 /* XCRemoteSwiftPackageReference "Citadel" */;
 			productName = Citadel;
+		};
+		08A1B2C130744F0000000003 /* AetherEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 08A1B2C230744F0000000003 /* XCRemoteSwiftPackageReference "AetherEngine" */;
+			productName = AetherEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
