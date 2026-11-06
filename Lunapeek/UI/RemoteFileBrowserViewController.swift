@@ -1083,6 +1083,9 @@ extension RemoteFileBrowserViewController: FileItemCellDelegate {
             case "jpg", "jpeg", "png", "gif", "heic":
                 iconView.image = UIImage(systemName: "photo.fill")
                 iconView.tintColor = .systemGreen
+            case "srt", "ass", "ssa", "vtt", "sub":
+                iconView.image = UIImage(systemName: "captions.bubble")
+                iconView.tintColor = .systemOrange
             default:
                 iconView.image = UIImage(systemName: "doc.fill")
                 iconView.tintColor = .systemGray
@@ -1570,6 +1573,9 @@ final class FileItemCell: UICollectionViewCell {
             case "jpg", "jpeg", "png", "gif", "heic":
                 iconView.image = UIImage(systemName: "photo.fill")
                 iconView.tintColor = .systemGreen
+            case "srt", "ass", "ssa", "vtt", "sub":
+                iconView.image = UIImage(systemName: "captions.bubble")
+                iconView.tintColor = .systemOrange
             default:
                 iconView.image = UIImage(systemName: "doc.fill")
                 iconView.tintColor = .systemGray
