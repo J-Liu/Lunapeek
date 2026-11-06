@@ -64,21 +64,12 @@ public final class MPVPlayer {
             return
         }
 
-        // Set options
-        setOption("hwdec", value: "auto")
-        setOption("vo", value: "gpu-next")
-        setOption("gpu-api", value: "vulkan")
-        setOption("gpu-context", value: "moltenvk")
+        // Set options for iOS
+        setOption("hwdec", value: "auto-safe")
+        setOption("vo", value: "gpu")
         setOption("vid", value: "auto")
         setOption("aid", value: "auto")
         setOption("keep-open", value: "yes")
-        setOption("force-window", value: "no")
-
-        // Set wid to embed in view
-        if let playerView = playerView {
-            var layer = playerView.layer
-            mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &layer)
-        }
 
         // Initialize
         let initResult = mpv_initialize(handle)
@@ -104,15 +95,20 @@ public final class MPVPlayer {
             player.handleEvents()
         }, unsafeSelf)
 
-        // Load file
+        // Load file using loadfile command
         let path = url.isFileURL ? url.path : url.absoluteString
         var args: [UnsafePointer<CChar>?] = [
+            UnsafePointer(strdup("loadfile")),
             UnsafePointer(strdup(path)),
             nil
         ]
         let result = mpv_command(handle, &args)
-        if let ptr = args[0] {
-            free(UnsafeMutableRawPointer(mutating: ptr))
+
+        // Free allocated strings
+        for i in 0..<2 {
+            if let ptr = args[i] {
+                free(UnsafeMutableRawPointer(mutating: ptr))
+            }
         }
 
         if result < 0 {
