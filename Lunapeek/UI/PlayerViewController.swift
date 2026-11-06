@@ -49,6 +49,7 @@ final class PlayerViewController: UIViewController {
     private var speedPopupView: UIView?
     private var audioTrackPopupView: UIView?
     private var selectedAudioTrackID: Int?
+    private var isSwitchingAudioTrack = false
 
     // Lock state
     private var isLocked = false
@@ -939,6 +940,8 @@ final class PlayerViewController: UIViewController {
             engine?.currentAVPlayer?.volume = 0
             log("Audio muted")
         } else {
+            // Set flag to prevent progress slider jump during rebuild
+            isSwitchingAudioTrack = true
             engine?.selectAudioTrack(index: trackID)
             selectedAudioTrackID = trackID
             engine?.currentAVPlayer?.volume = 1
@@ -1451,6 +1454,8 @@ final class PlayerViewController: UIViewController {
         debugLog("🎬 PlayerViewController: handleAetherEngineStateChanged: \(state)")
         switch state {
         case .playing:
+            // Clear the audio track switching flag - rebuild complete
+            isSwitchingAudioTrack = false
             isPaused = false
             let image = UIImage(systemName: "pause.fill")?
                 .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
@@ -2197,6 +2202,9 @@ final class PlayerViewController: UIViewController {
     private func updateProgressFromAetherEngine() {
         // Don't update progress while user is dragging the slider
         guard !isProgressDragging else { return }
+
+        // Don't update progress during audio track switch (prevents slider jump during rebuild)
+        guard !isSwitchingAudioTrack else { return }
 
         guard let engine = engine else { return }
 
