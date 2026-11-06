@@ -6,6 +6,8 @@
 import Foundation
 import Mpv
 import UIKit
+import Metal
+import QuartzCore
 
 /// Player state
 public enum MPVPlayerState: Equatable {
@@ -80,8 +82,9 @@ public final class MPVPlayer {
         // Set options for iOS
         log("Setting options...")
         setOption("hwdec", value: "auto-safe")
-        setOption("vo", value: "null")  // Test without video output
-        setOption("vid", value: "no")   // Disable video
+        setOption("vo", value: "gpu")
+        setOption("gpu-context", value: "ios")
+        setOption("vid", value: "auto")
         setOption("aid", value: "auto")
         setOption("keep-open", value: "yes")
 
@@ -187,11 +190,11 @@ public final class MPVPlayer {
 
     /// Stop and reset
     public func stop() {
-        guard let handle = handle else { return }
-
-        mpv_set_wakeup_callback(handle, nil, nil)
-        mpv_terminate_destroy(handle)
-        self.handle = nil
+        if let handle = handle {
+            mpv_set_wakeup_callback(handle, nil, nil)
+            mpv_terminate_destroy(handle)
+            self.handle = nil
+        }
 
         state = .idle
         onStateChanged?(.idle)
@@ -284,7 +287,6 @@ public final class MPVPlayer {
                     self.state = .ended
                     self.onStateChanged?(.ended)
                 } else if reason == MPV_END_FILE_REASON_ERROR {
-                    // Get error code from mpv_end_file_reason structure
                     let errorStruct = event.data.map { UnsafeRawPointer($0).assumingMemoryBound(to: mpv_event_end_file.self).pointee }
                     let errorCode = errorStruct?.error ?? 0
                     let errorStr = errorStruct.flatMap { String(cString: mpv_error_string($0.error)) } ?? "unknown"
@@ -375,6 +377,6 @@ public class MPVPlayerView: UIView {
     }
 
     public override class var layerClass: AnyClass {
-        return CALayer.self
+        return CAMetalLayer.self
     }
 }
