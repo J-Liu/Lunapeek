@@ -165,10 +165,10 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     @objc private func appWillResignActive() {
-        // Always pause when leaving the app
+        // Pause playback when leaving the app
 
         // Handle AetherEngine
-        if let engine = engine {
+        if let engine = engine, engine.state == .playing {
             engine.pause()
             isPaused = true
             setPlayButtonIcon(isPlaying: false)
@@ -177,9 +177,9 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         }
 
         // Handle AVQueuePlayer
-        guard avQueuePlayer != nil else { return }
+        guard let player = avQueuePlayer, player.timeControlStatus == .playing else { return }
 
-        avQueuePlayer?.pause()
+        player.pause()
         isPaused = true
         setPlayButtonIcon(isPlaying: false)
         updateCenterButtons()
@@ -190,6 +190,15 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     @objc private func appWillEnterForeground() {
+        // Re-activate audio session for AetherEngine
+        if let engine = engine {
+            try? AVAudioSession.sharedInstance().setActive(true)
+            // Re-bind view to ensure video layer is attached
+            if let playerView = aetherPlayerView {
+                engine.bind(view: playerView)
+            }
+        }
+
         // Update button state (still paused)
         setPlayButtonIcon(isPlaying: false)
         updateCenterButtons()
