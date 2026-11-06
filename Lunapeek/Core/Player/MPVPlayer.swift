@@ -398,6 +398,6 @@ public class MPVPlayerView: UIView {
     }
 
     public override class var layerClass: AnyClass {
-        return CAMetalLayer.self
+        return CAEAGLLayer.self
     }
 }
