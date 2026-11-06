@@ -167,8 +167,19 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
     @objc private func appWillResignActive() {
         // For pause mode, just pause (no PiP since pipController is not created)
-        guard avQueuePlayer != nil else { return }
         guard Settings.shared.exitBehavior == .pause else { return }
+
+        // Handle AetherEngine
+        if let engine = engine {
+            engine.pause()
+            isPaused = true
+            setPlayButtonIcon(isPlaying: false)
+            updateCenterButtons()
+            return
+        }
+
+        // Handle AVQueuePlayer
+        guard avQueuePlayer != nil else { return }
 
         avQueuePlayer?.pause()
         isPaused = true
@@ -177,6 +188,26 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     @objc private func appDidEnterBackground() {
+        // Handle AetherEngine
+        if let engine = engine {
+            let exitBehavior = Settings.shared.exitBehavior
+            switch exitBehavior {
+            case .pip:
+                // AetherEngine doesn't support PiP, just pause
+                engine.pause()
+                isPaused = true
+            case .background:
+                // Continue playback in background - AetherEngine handles this natively
+                // Audio session should already be configured
+                break
+            case .pause:
+                // Already paused in willResignActive
+                break
+            }
+            return
+        }
+
+        // Handle AVQueuePlayer
         guard avQueuePlayer != nil else { return }
 
         let exitBehavior = Settings.shared.exitBehavior
@@ -213,6 +244,11 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
             playerLayer.videoGravity = Settings.shared.defaultAspectRatio.videoGravity
             videoView.layer.addSublayer(playerLayer)
             avPlayerLayer = playerLayer
+        }
+
+        // For AetherEngine, reactivate audio session if needed
+        if engine != nil {
+            try? AVAudioSession.sharedInstance().setActive(true)
         }
 
         // Update button state for pause mode
@@ -1122,6 +1158,8 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
         switch engine.state {
         case .paused, .loading, .idle:
+            // Ensure audio session is active before playing
+            try? AVAudioSession.sharedInstance().setActive(true)
             engine.play()
             isPaused = false
             setPlayButtonIcon(isPlaying: true)
@@ -1384,6 +1422,9 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
     private func setupAetherEngine() {
         log("🎬 Setting up AetherEngine for: \(url.lastPathComponent)")
+
+        // Activate audio session for playback
+        activateAudioSession()
 
         // Create engine (can be reused across titles)
         do {
@@ -2219,6 +2260,8 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
         switch engine.state {
         case .paused, .loading, .idle:
+            // Ensure audio session is active before playing
+            try? AVAudioSession.sharedInstance().setActive(true)
             engine.play()
             isPaused = false
             setPlayButtonIcon(isPlaying: true)
