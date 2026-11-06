@@ -7,19 +7,22 @@ import UIKit
 import AVFoundation
 import AVKit
 import MediaPlayer
+import AetherEngine
+import Combine
 
 // AV_TIME_BASE constant (microseconds per second)
 private let AV_TIME_BASE: Int64 = 1000000
 
 final class PlayerViewController: UIViewController {
     private let url: URL
-    private var mpvPlayer: MPVPlayer?
+    private var engine: AetherEngine?
     private var avQueuePlayer: AVQueuePlayer?
     private var avPlayerLayer: AVPlayerLayer?
     private var pipController: AVPictureInPictureController?
     private var proxyServer: HTTPProxyServer?
     private var timeObserver: Any?
     private var videoView: UIView!
+    private var aetherPlayerView: AetherPlayerView?
 
     private var controlView: UIView!
     private var playButton: UIButton!
@@ -80,6 +83,9 @@ final class PlayerViewController: UIViewController {
     private var logEntries: [String] = []
     private var isDebugVisible = false
 
+    // Combine subscriptions
+    private var cancellables = Set<AnyCancellable>()
+
     init(url: URL, proxyServer: HTTPProxyServer? = nil, playlist: [URL]? = nil, currentIndex: Int = 0) {
         self.url = url
         self.proxyServer = proxyServer
@@ -105,8 +111,7 @@ final class PlayerViewController: UIViewController {
         }
         // Stop proxy server
         proxyServer?.stop()
-        // Stop MPVPlayer
-        mpvPlayer?.stop()
+        // AetherEngine.stop() is MainActor isolated, so we stop it in cleanupAndDismiss instead
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
     }
@@ -780,11 +785,11 @@ final class PlayerViewController: UIViewController {
     @objc private func backwardTapped() {
         resetControlsHideTimer()
 
-        // Handle MPVPlayer
-        if let player = mpvPlayer {
-            let currentSeconds = player.currentPlaybackTime
+        // Handle AetherEngine
+        if let engine = engine {
+            let currentSeconds = engine.clock.currentTime
             let newSeconds = max(0, currentSeconds - 10)
-            player.seek(to: newSeconds)
+            Task { await engine.seek(to: newSeconds) }
             return
         }
 
@@ -799,12 +804,12 @@ final class PlayerViewController: UIViewController {
     @objc private func forwardTapped() {
         resetControlsHideTimer()
 
-        // Handle MPVPlayer
-        if let player = mpvPlayer {
-            let currentSeconds = player.currentPlaybackTime
-            let durationSeconds = player.totalDuration
+        // Handle AetherEngine
+        if let engine = engine {
+            let currentSeconds = engine.clock.currentTime
+            let durationSeconds = engine.duration
             let newSeconds = min(durationSeconds, currentSeconds + 10)
-            player.seek(to: newSeconds)
+            Task { await engine.seek(to: newSeconds) }
             return
         }
 
@@ -900,16 +905,16 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Handle MPVPlayer
-        guard let player = mpvPlayer else { return }
+        // Handle AetherEngine
+        guard let engine = engine else { return }
 
-        switch player.state {
-        case .ready, .paused:
-            player.play()
+        switch engine.state {
+        case .paused, .loading, .idle:
+            engine.play()
             isPaused = false
             setPlayButtonIcon(isPlaying: true)
         case .playing:
-            player.pause()
+            engine.pause()
             isPaused = true
             setPlayButtonIcon(isPlaying: false)
         default:
@@ -950,6 +955,11 @@ final class PlayerViewController: UIViewController {
     private func playFile(at url: URL) {
         log("▶️ playFile: \(url.lastPathComponent)")
 
+        // Stop AetherEngine if present
+        engine?.stop()
+        aetherPlayerView?.removeFromSuperview()
+        aetherPlayerView = nil
+
         // Remove old time observer first
         if let observer = timeObserver {
             avQueuePlayer?.removeTimeObserver(observer)
@@ -958,10 +968,6 @@ final class PlayerViewController: UIViewController {
 
         // Remove notification observer
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
-
-        // Stop and remove MPVPlayer if present
-        mpvPlayer?.stop()
-        mpvPlayer = nil
 
         // Remove old player layer
         avPlayerLayer?.removeFromSuperlayer()
@@ -1080,7 +1086,7 @@ final class PlayerViewController: UIViewController {
 
         // Update video layer
         avPlayerLayer?.frame = videoView.bounds
-        (mpvPlayer?.view as? MPVPlayerView)?.frame = videoView.bounds
+        aetherPlayerView?.frame = videoView.bounds
     }
 
     private func exitFullscreen() {
@@ -1095,24 +1101,16 @@ final class PlayerViewController: UIViewController {
 
         // Update video layer
         avPlayerLayer?.frame = videoView.bounds
-        (mpvPlayer?.view as? MPVPlayerView)?.frame = videoView.bounds
+        aetherPlayerView?.frame = videoView.bounds
     }
 
     private func setupPlayer() {
         log("URL: \(url.absoluteString)")
         log("Extension: \(url.pathExtension)")
 
-        // Native formats (MP4/MOV) - use AVPlayer directly for optimal performance
-        if (url.pathExtension.lowercased() == "mp4" || url.pathExtension.lowercased() == "mov")
-            && (url.scheme == "http" || url.scheme == "https" || url.isFileURL) {
-            log("Native format, using AVPlayer")
-            setupAVPlayer()
-            return
-        }
-
-        // All other formats (MKV, AVI, WebM, etc.) - use MPVPlayer
-        log("Using MPVPlayer for \(url.pathExtension)")
-        setupMPVPlayer()
+        // Use AetherEngine for all formats
+        log("Using AetherEngine for \(url.pathExtension)")
+        setupAetherEngine()
     }
 
     private func setupAVPlayer() {
@@ -1172,23 +1170,24 @@ final class PlayerViewController: UIViewController {
 
     }
 
-    private func setupMPVPlayer() {
-        log("🎬 Setting up MPVPlayer for: \(url.lastPathComponent)")
+    private func setupAetherEngine() {
+        log("🎬 Setting up AetherEngine for: \(url.lastPathComponent)")
 
-        // Create player
-        let player = MPVPlayer()
-        mpvPlayer = player
-
-        // Set up log handler to show MPVPlayer logs in debug view
-        player.logHandler = { [weak self] message in
-            self?.log(message)
+        // Create engine (can be reused across titles)
+        do {
+            engine = try AetherEngine()
+        } catch {
+            log("❌ AetherEngine init failed: \(error)")
+            showError(error)
+            return
         }
 
-        // Add player view
-        let playerView = player.view
+        // Create player view
+        let playerView = AetherPlayerView()
         playerView.frame = videoView.bounds
         playerView.translatesAutoresizingMaskIntoConstraints = false
         videoView.addSubview(playerView)
+        aetherPlayerView = playerView
 
         NSLayoutConstraint.activate([
             playerView.topAnchor.constraint(equalTo: videoView.topAnchor),
@@ -1197,32 +1196,51 @@ final class PlayerViewController: UIViewController {
             playerView.bottomAnchor.constraint(equalTo: videoView.bottomAnchor)
         ])
 
+        // Bind engine to view
+        engine?.bind(view: playerView)
+
         // Observe state changes
-        player.onStateChanged = { [weak self] state in
-            DispatchQueue.main.async {
-                self?.handleMPVPlayerStateChanged(state)
+        engine?.$state
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.handleAetherEngineStateChanged(state)
             }
-        }
+            .store(in: &cancellables)
 
         // Observe progress updates
-        player.onProgress = { [weak self] currentSeconds, durationSeconds in
-            DispatchQueue.main.async {
-                self?.updateProgressFromMPVPlayer(current: currentSeconds, duration: durationSeconds)
+        engine?.clock.$currentTime
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateProgressFromAetherEngine()
+            }
+            .store(in: &cancellables)
+
+        // Observe duration changes
+        engine?.$duration
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateProgressFromAetherEngine()
+            }
+            .store(in: &cancellables)
+
+        // Load the URL
+        Task { [weak self] in
+            do {
+                try await self?.engine?.load(url: self!.url)
+                self?.engine?.play()
+                self?.log("✅ AetherEngine loaded and started")
+            } catch {
+                self?.log("❌ AetherEngine load failed: \(error)")
+                DispatchQueue.main.async {
+                    self?.showError(error)
+                }
             }
         }
-
-        // Open the file
-        player.open(url: url)
-
-        log("✅ MPVPlayer initialized")
     }
 
-    private func handleMPVPlayerStateChanged(_ state: MPVPlayerState) {
-        debugLog("🎬 PlayerViewController: handleMPVPlayerStateChanged: \(state)")
+    private func handleAetherEngineStateChanged(_ state: PlaybackState) {
+        debugLog("🎬 PlayerViewController: handleAetherEngineStateChanged: \(state)")
         switch state {
-        case .ready:
-            // Auto-play when ready
-            mpvPlayer?.play()
         case .playing:
             isPaused = false
             let image = UIImage(systemName: "pause.fill")?
@@ -1561,8 +1579,8 @@ final class PlayerViewController: UIViewController {
                 // Get current playback position
                 if let player = avQueuePlayer {
                     seekStartSeconds = player.currentTime().seconds
-                } else if let player = mpvPlayer {
-                    seekStartSeconds = player.currentPlaybackTime
+                } else if let engine = engine {
+                    seekStartSeconds = engine.clock.currentTime
                 } else {
                     seekStartSeconds = 0
                 }
@@ -1588,10 +1606,8 @@ final class PlayerViewController: UIViewController {
                     let time = CMTime(seconds: clampedTime, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
                     let tolerance = CMTime(seconds: 1, preferredTimescale: 600)
                     player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
-                } else if let player = mpvPlayer {
-                    // For MPVPlayer, only perform final seek on gesture end
-                    // Just show indicator during gesture
                 }
+                // For AetherEngine, perform final seek on gesture end
             } else {
                 // Vertical swipe for brightness/volume
                 let deltaY = initialPanY - location.y
@@ -1620,15 +1636,15 @@ final class PlayerViewController: UIViewController {
                     self?.seekIndicatorView = nil
                 }
 
-                // For MPVPlayer, perform the final seek
-                if let player = mpvPlayer {
+                // For AetherEngine, perform the final seek
+                if let engine = engine {
                     let deltaX = location.x - initialPanX
                     let seekDelta = TimeInterval(deltaX * 0.5)
                     let newTime = seekStartSeconds + seekDelta
                     let duration = getDuration()
                     let clampedTime = max(0, min(duration, newTime))
 
-                    player.seek(to: clampedTime)
+                    Task { await engine.seek(to: clampedTime) }
                 }
             }
             isSeeking = false
@@ -1784,8 +1800,9 @@ final class PlayerViewController: UIViewController {
         proxyServer = nil
         deactivateAudioSession()
 
-        mpvPlayer?.stop()
-        mpvPlayer = nil
+        // Stop AetherEngine before dismissing
+        engine?.stop()
+        engine = nil
 
         dismiss(animated: true)
     }
@@ -1811,16 +1828,16 @@ final class PlayerViewController: UIViewController {
             return
         }
 
-        // Handle MPVPlayer
-        guard let player = mpvPlayer else { return }
+        // Handle AetherEngine
+        guard let engine = engine else { return }
 
-        switch player.state {
-        case .ready, .paused:
-            player.play()
+        switch engine.state {
+        case .paused, .loading, .idle:
+            engine.play()
             isPaused = false
             setPlayButtonIcon(isPlaying: true)
         case .playing:
-            player.pause()
+            engine.pause()
             isPaused = true
             setPlayButtonIcon(isPlaying: false)
         default:
@@ -1846,9 +1863,9 @@ final class PlayerViewController: UIViewController {
         // Only update UI during drag, don't seek yet
         resetControlsHideTimer()
 
-        // Handle MPVPlayer
-        if let player = mpvPlayer {
-            let duration = player.totalDuration
+        // Handle AetherEngine
+        if let engine = engine {
+            let duration = engine.duration
             guard duration > 0 else { return }
 
             let targetTime = duration * Double(progressBar.value) / 100
@@ -1873,13 +1890,13 @@ final class PlayerViewController: UIViewController {
         // Perform actual seek when user releases the slider
         resetControlsHideTimer()
 
-        // Handle MPVPlayer
-        if let player = mpvPlayer {
-            let duration = player.totalDuration
+        // Handle AetherEngine
+        if let engine = engine {
+            let duration = engine.duration
             guard duration > 0 else { return }
 
             let targetTime = duration * Double(progressBar.value) / 100
-            player.seek(to: targetTime)
+            Task { await engine.seek(to: targetTime) }
 
             showSeekIndicator(seconds: targetTime)
             return
@@ -1906,13 +1923,13 @@ final class PlayerViewController: UIViewController {
         let percentage = Double(location.x / progressBar.bounds.width)
         let clampedPercentage = max(0, min(1, percentage))
 
-        // Handle MPVPlayer
-        if let player = mpvPlayer {
-            let duration = player.totalDuration
+        // Handle AetherEngine
+        if let engine = engine {
+            let duration = engine.duration
             guard duration > 0 else { return }
 
             let targetTime = duration * clampedPercentage
-            player.seek(to: targetTime)
+            Task { await engine.seek(to: targetTime) }
 
             // Update slider visual
             progressBar.value = Float(clampedPercentage * 100)
@@ -1938,10 +1955,10 @@ final class PlayerViewController: UIViewController {
         showSeekIndicator(seconds: targetTime)
     }
 
-    /// Get duration - use MPVPlayer or AVPlayer duration
+    /// Get duration - use AetherEngine or AVPlayer duration
     private func getDuration() -> Double {
-        if let player = mpvPlayer, player.totalDuration > 0 {
-            return player.totalDuration
+        if let engine = engine, engine.duration > 0 {
+            return engine.duration
         }
         return avQueuePlayer?.currentItem?.duration.seconds ?? 0
     }
@@ -1965,10 +1982,15 @@ final class PlayerViewController: UIViewController {
         }
     }
 
-    /// Update progress from MPVPlayer
-    private func updateProgressFromMPVPlayer(current: Double, duration: Double) {
+    /// Update progress from AetherEngine
+    private func updateProgressFromAetherEngine() {
         // Don't update progress while user is dragging the slider
         guard !isProgressDragging else { return }
+
+        guard let engine = engine else { return }
+
+        let current = engine.clock.currentTime
+        let duration = engine.duration
 
         guard duration > 0 else { return }
 
@@ -1984,7 +2006,7 @@ final class PlayerViewController: UIViewController {
         let isPlaying: Bool
         if let player = avQueuePlayer {
             isPlaying = player.timeControlStatus == .playing
-        } else if let player = mpvPlayer, player.state == .playing {
+        } else if let engine = engine, engine.state == .playing {
             isPlaying = true
         } else {
             isPlaying = false
