@@ -79,14 +79,23 @@ public final class MPVPlayer {
         }
         log("mpv handle created")
 
-        // Set options for iOS
+        // Set options for iOS - following KSPlayer approach
         log("Setting options...")
-        setOption("hwdec", value: "auto-safe")
-        setOption("vo", value: "gpu")
+
+        // Pass the view's layer to mpv for rendering
+        if let playerView = playerView {
+            var layer = playerView.layer
+            let widResult = mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &layer)
+            log("Set wid option result: \(widResult)")
+        }
+
+        setOption("vo", value: "gpu-next")
+        setOption("gpu-api", value: "vulkan")
+        setOption("gpu-context", value: "moltenvk")
+        setOption("hwdec", value: "videotoolbox")
         setOption("vid", value: "auto")
         setOption("aid", value: "auto")
         setOption("keep-open", value: "yes")
-        setOption("msg-level", value: "all=debug")
 
         // Initialize
         log("Initializing mpv...")
@@ -101,18 +110,6 @@ public final class MPVPlayer {
             return
         }
         log("mpv initialized successfully")
-
-        // Query available VOs
-        var voList: UnsafeMutablePointer<CChar>?
-        let voResult = mpv_get_property(handle, "vo-configured", MPV_FORMAT_STRING, &voList)
-        log("vo-configured result: \(voResult)")
-
-        // Try to get video format info
-        var vidFormat: UnsafeMutablePointer<CChar>?
-        let fmtResult = mpv_get_property(handle, "video-format", MPV_FORMAT_STRING, &vidFormat)
-        if fmtResult >= 0, let fmt = vidFormat {
-            log("video-format: \(String(cString: fmt))")
-        }
 
         // Observe properties
         mpv_observe_property(handle, 0, "time-pos", MPV_FORMAT_DOUBLE)
