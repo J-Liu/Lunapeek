@@ -18,7 +18,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     private var engine: AetherEngine?
     private var avQueuePlayer: AVQueuePlayer?
     private var avPlayerLayer: AVPlayerLayer?
-    private var pipController: AVPictureInPictureController?
     private var proxyServer: HTTPProxyServer?
     private var timeObserver: Any?
     private var videoView: UIView!
@@ -192,10 +191,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         if let engine = engine {
             let exitBehavior = Settings.shared.exitBehavior
             switch exitBehavior {
-            case .pip:
-                // AetherEngine doesn't support PiP, just pause
-                engine.pause()
-                isPaused = true
             case .background:
                 // Continue playback in background - AetherEngine handles this natively
                 // Audio session should already be configured
@@ -212,11 +207,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
         let exitBehavior = Settings.shared.exitBehavior
         switch exitBehavior {
-        case .pip:
-            // Start Picture in Picture
-            if let pip = pipController, pip.isPictureInPicturePossible {
-                pip.startPictureInPicture()
-            }
         case .background:
             // Remove player layer to allow background audio playback
             avPlayerLayer?.removeFromSuperlayer()
@@ -232,11 +222,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     @objc private func appWillEnterForeground() {
-        // Stop PiP when returning to app (only if pipController exists)
-        if let pip = pipController, pip.isPictureInPictureActive {
-            pip.stopPictureInPicture()
-        }
-
         // Restore player layer for background mode
         if Settings.shared.exitBehavior == .background, avPlayerLayer == nil, let player = avQueuePlayer {
             let playerLayer = AVPlayerLayer(player: player)
@@ -1388,28 +1373,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         videoView.layer.addSublayer(playerLayer)
         avPlayerLayer = playerLayer
 
-        // Setup Picture in Picture (only if exit behavior is .pip)
-        if Settings.shared.exitBehavior == .pip {
-            if AVPictureInPictureController.isPictureInPictureSupported() {
-                pipController = AVPictureInPictureController(playerLayer: playerLayer)
-                pipController?.delegate = self
-            }
-        }
-
-        // Add time observer for progress updates
-        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            self?.updateProgress()
-        }
-
-        // Observe video end
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(playerDidFinishPlaying),
-            name: .AVPlayerItemDidPlayToEndTime,
-            object: nil
-        )
-
         activateAudioSession()
         player.play()
         log("✅ AVQueuePlayer started with items")
@@ -1720,14 +1683,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         videoView.layer.addSublayer(playerLayer)
         avPlayerLayer = playerLayer
 
-        // Setup PiP if needed
-        if Settings.shared.exitBehavior == .pip {
-            if AVPictureInPictureController.isPictureInPictureSupported() {
-                pipController = AVPictureInPictureController(playerLayer: playerLayer)
-                pipController?.delegate = self
-            }
-        }
-
         // Add time observer
         let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
@@ -1852,8 +1807,8 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     private func activateAudioSession() {
-        // Activate for background play setting OR background/pip exit behavior
-        let shouldActivate = Settings.shared.backgroundPlay || Settings.shared.exitBehavior == .background || Settings.shared.exitBehavior == .pip
+        // Activate for background play setting OR background exit behavior
+        let shouldActivate = Settings.shared.backgroundPlay || Settings.shared.exitBehavior == .background
         guard shouldActivate else { return }
 
         do {
@@ -2231,7 +2186,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
         avQueuePlayer = nil
         avPlayerLayer?.removeFromSuperlayer()
         avPlayerLayer = nil
-        pipController = nil
         proxyServer?.stop()
         proxyServer = nil
         deactivateAudioSession()
@@ -2490,30 +2444,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         avPlayerLayer?.frame = videoView.bounds
-    }
-}
-
-// MARK: - Picture in Picture Delegate
-
-extension PlayerViewController: AVPictureInPictureControllerDelegate {
-    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
-        // Hide controls when PiP starts
-        hideControls()
-    }
-
-    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
-        // Show controls when PiP stops
-        showControls()
-        // Update button state based on current playback status
-        if let player = avQueuePlayer {
-            isPaused = (player.timeControlStatus != .playing)
-            setPlayButtonIcon(isPlaying: !isPaused)
-            updateCenterButtons()
-        }
-    }
-
-    func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        log("PiP failed to start: \(error.localizedDescription)")
     }
 }
 

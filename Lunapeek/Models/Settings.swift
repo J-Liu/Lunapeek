@@ -93,7 +93,7 @@ final class Settings {
     }
 
     var exitBehavior: ExitBehavior {
-        get { ExitBehavior(rawValue: defaults.string(forKey: Key.exitBehavior) ?? "pip") ?? .pip }
+        get { ExitBehavior(rawValue: defaults.string(forKey: Key.exitBehavior) ?? "background") ?? .background }
         set { defaults.set(newValue.rawValue, forKey: Key.exitBehavior) }
     }
 
@@ -145,13 +145,11 @@ enum AspectRatio: String, CaseIterable {
 }
 
 enum ExitBehavior: String, CaseIterable {
-    case pip = "pip"
     case background = "background"
     case pause = "pause"
 
     var displayName: String {
         switch self {
-        case .pip: return NSLocalizedString("Picture in Picture", comment: "")
         case .background: return NSLocalizedString("Background Play", comment: "")
         case .pause: return NSLocalizedString("Pause", comment: "")
         }
