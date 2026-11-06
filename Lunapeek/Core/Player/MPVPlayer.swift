@@ -79,6 +79,9 @@ public final class MPVPlayer {
         }
         log("mpv handle created")
 
+        // Request log messages from mpv
+        mpv_request_log_messages(handle, "debug")
+
         // Set options for iOS - following KSPlayer approach
         log("Setting options...")
 
@@ -294,7 +297,9 @@ public final class MPVPlayer {
             handlePropertyChange(event)
 
         case MPV_EVENT_END_FILE:
-            let reason = event.data.map { UnsafeRawPointer($0).load(as: mpv_end_file_reason.self) } ?? MPV_END_FILE_REASON_EOF
+            guard let data = event.data else { return }
+            let endFileEvent = data.assumingMemoryBound(to: mpv_event_end_file.self).pointee
+            let reason = endFileEvent.reason
             log("END_FILE event, reason: \(reason.rawValue)")
 
             DispatchQueue.main.async { [weak self] in
@@ -305,10 +310,8 @@ public final class MPVPlayer {
                     self.state = .ended
                     self.onStateChanged?(.ended)
                 } else if reason == MPV_END_FILE_REASON_ERROR {
-                    let errorStruct = event.data.map { UnsafeRawPointer($0).assumingMemoryBound(to: mpv_event_end_file.self).pointee }
-                    let errorCode = errorStruct?.error ?? 0
-                    let errorStr = errorStruct.flatMap { String(cString: mpv_error_string($0.error)) } ?? "unknown"
-                    self.log("Playback error: code=\(errorCode), message=\(errorStr)")
+                    let errorStr = String(cString: mpv_error_string(endFileEvent.error))
+                    self.log("Playback error: code=\(endFileEvent.error), message=\(errorStr)")
                     self.state = .error("Playback error: \(errorStr)")
                     self.onStateChanged?(.error("Playback error: \(errorStr)"))
                 } else if reason == MPV_END_FILE_REASON_STOP {
