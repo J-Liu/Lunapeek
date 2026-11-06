@@ -5,6 +5,7 @@
 
 import Foundation
 import Mpv
+import UIKit
 
 /// Player state
 public enum MPVPlayerState {
@@ -24,22 +25,30 @@ public final class MPVPlayer {
     public var onProgress: ((Double, Double) -> Void)?
 
     private var handle: OpaquePointer?
-    private var renderContext: OpaquePointer?
+    private var playerView: MPVPlayerView?
 
     private var url: URL?
     private var duration: Double = 0
     private var currentTime: Double = 0
 
-    private var eventQueue = DispatchQueue(label: "com.lunapeek.mpv.events")
+    private let eventQueue = DispatchQueue(label: "com.lunapeek.mpv.events", qos: .userInitiated)
     private var isSeeking = false
 
     public init() {}
 
     deinit {
-        close()
+        stop()
     }
 
     // MARK: - Public API
+
+    /// The view for video rendering
+    public var view: UIView {
+        if playerView == nil {
+            playerView = MPVPlayerView()
+        }
+        return playerView!
+    }
 
     /// Open a file URL
     public func open(url: URL) {
@@ -57,9 +66,19 @@ public final class MPVPlayer {
 
         // Set options
         setOption("hwdec", value: "auto")
-        setOption("vo", value: "libmpv")
+        setOption("vo", value: "gpu-next")
+        setOption("gpu-api", value: "vulkan")
+        setOption("gpu-context", value: "moltenvk")
         setOption("vid", value: "auto")
         setOption("aid", value: "auto")
+        setOption("keep-open", value: "yes")
+        setOption("force-window", value: "no")
+
+        // Set wid to embed in view
+        if let playerView = playerView {
+            var layer = playerView.layer
+            mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &layer)
+        }
 
         // Initialize
         let initResult = mpv_initialize(handle)
@@ -72,22 +91,30 @@ public final class MPVPlayer {
             return
         }
 
+        // Observe properties
+        mpv_observe_property(handle, 0, "time-pos", MPV_FORMAT_DOUBLE)
+        mpv_observe_property(handle, 0, "pause", MPV_FORMAT_FLAG)
+        mpv_observe_property(handle, 0, "duration", MPV_FORMAT_DOUBLE)
+
         // Set up event callback
+        let unsafeSelf = Unmanaged.passUnretained(self).toOpaque()
         mpv_set_wakeup_callback(handle, { ctx in
             guard let ctx = ctx else { return }
             let player = Unmanaged<MPVPlayer>.fromOpaque(ctx).takeUnretainedValue()
             player.handleEvents()
-        }, Unmanaged.passUnretained(self).toOpaque())
+        }, unsafeSelf)
 
         // Load file
-        var args = [url.path, UnsafeMutablePointer<CChar>(mutating: nil)]
+        let path = url.isFileURL ? url.path : url.absoluteString
+        var args = [strdup(path), UnsafeMutablePointer<CChar>(nil)]
         let result = mpv_command(handle, &args)
+        free(args[0])
 
         if result < 0 {
             let error = String(cString: mpv_error_string(result))
             state = .error("Failed to load file: \(error)")
             onStateChanged?(.error("Failed to load file: \(error)"))
-            close()
+            stop()
         }
     }
 
@@ -96,7 +123,7 @@ public final class MPVPlayer {
         guard let handle = handle, state == .ready || state == .paused else { return }
 
         var pause: Int64 = 0
-        mpv_set_option(handle, "pause", MPV_FORMAT_INT64, &pause)
+        mpv_set_property(handle, "pause", MPV_FORMAT_INT64, &pause)
 
         state = .playing
         onStateChanged?(.playing)
@@ -107,46 +134,40 @@ public final class MPVPlayer {
         guard let handle = handle, state == .playing else { return }
 
         var pause: Int64 = 1
-        mpv_set_option(handle, "pause", MPV_FORMAT_INT64, &pause)
+        mpv_set_property(handle, "pause", MPV_FORMAT_INT64, &pause)
 
         state = .paused
         onStateChanged?(.paused)
     }
 
-    /// Seek to timestamp (seconds)
+    /// Seek to timestamp (seconds) - async, non-blocking
     public func seek(to time: Double) {
         guard let handle = handle else { return }
 
         isSeeking = true
         let timeStr = String(format: "%.2f", time)
-        let absolute = "absolute"
 
         var args: [UnsafeMutablePointer<CChar>?] = [
             strdup("seek"),
             strdup(timeStr),
-            strdup(absolute),
+            strdup("absolute"),
             nil
         ]
 
         mpv_command_async(handle, 0, &args)
 
-        // Free allocated strings
         for i in 0..<3 {
             free(args[i])
         }
     }
 
-    /// Stop and close
-    public func close() {
-        if let renderContext = renderContext {
-            mpv_render_context_free(renderContext)
-            self.renderContext = nil
-        }
+    /// Stop and reset
+    public func stop() {
+        guard let handle = handle else { return }
 
-        if let handle = handle {
-            mpv_terminate_destroy(handle)
-            self.handle = nil
-        }
+        mpv_set_wakeup_callback(handle, nil, nil)
+        mpv_terminate_destroy(handle)
+        self.handle = nil
 
         state = .idle
         onStateChanged?(.idle)
@@ -174,8 +195,8 @@ public final class MPVPlayer {
             guard let self = self, let handle = self.handle else { return }
 
             while true {
-                let event = mpv_wait_event(handle, 0)
-                guard let eventData = event?.pointee else { break }
+                guard let event = mpv_wait_event(handle, 0) else { break }
+                let eventData = event.pointee
 
                 if eventData.event_id == MPV_EVENT_NONE {
                     break
@@ -189,7 +210,6 @@ public final class MPVPlayer {
     private func processEvent(_ event: mpv_event) {
         switch event.event_id {
         case MPV_EVENT_FILE_LOADED:
-            // File loaded successfully
             duration = getProperty("duration") ?? 0
             currentTime = 0
 
@@ -203,14 +223,13 @@ public final class MPVPlayer {
 
         case MPV_EVENT_PLAYBACK_RESTART:
             isSeeking = false
-            // Update current time after seek
             currentTime = getProperty("time-pos") ?? 0
 
         case MPV_EVENT_PROPERTY_CHANGE:
             handlePropertyChange(event)
 
         case MPV_EVENT_END_FILE:
-            let reason = event.data?.load(as: mpv_end_file_reason.self) ?? MPV_END_FILE_REASON_EOF
+            let reason = event.data.map { UnsafeRawPointer($0).load(as: mpv_end_file_reason.self) } ?? MPV_END_FILE_REASON_EOF
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
 
@@ -229,14 +248,14 @@ public final class MPVPlayer {
     }
 
     private func handlePropertyChange(_ event: mpv_event) {
-        guard let data = event.data?.load(as: mpv_event_property.self) else { return }
-
-        let propertyName = String(cString: data.name)
+        guard let data = event.data else { return }
+        let property = data.assumingMemoryBound(to: mpv_event_property.self).pointee
+        let propertyName = String(cString: property.name)
 
         switch propertyName {
         case "time-pos":
-            if let time = UnsafePointer<Double>(OpaquePointer(data.data))?.pointee {
-                currentTime = time
+            if let timePtr = property.data?.assumingMemoryBound(to: Double.self) {
+                currentTime = timePtr.pointee
 
                 if !isSeeking && duration > 0 {
                     DispatchQueue.main.async { [weak self] in
@@ -246,8 +265,14 @@ public final class MPVPlayer {
                 }
             }
 
+        case "duration":
+            if let durationPtr = property.data?.assumingMemoryBound(to: Double.self) {
+                duration = durationPtr.pointee
+            }
+
         case "pause":
-            if let paused = UnsafePointer<Bool>(OpaquePointer(data.data))?.pointee {
+            if let pausePtr = property.data?.assumingMemoryBound(to: Bool.self) {
+                let paused = pausePtr.pointee
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     if paused && self.state == .playing {
@@ -273,13 +298,23 @@ public final class MPVPlayer {
 
         return result >= 0 ? value : nil
     }
+}
 
-    private func observeProperties() {
-        guard let handle = handle else { return }
+// MARK: - MPVPlayerView
 
-        // Observe time position
-        mpv_observe_property(handle, 0, "time-pos", MPV_FORMAT_DOUBLE)
-        // Observe pause state
-        mpv_observe_property(handle, 0, "pause", MPV_FORMAT_FLAG)
+/// UIView subclass for mpv rendering
+public class MPVPlayerView: UIView {
+    public override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .black
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        backgroundColor = .black
+    }
+
+    public override class var layerClass: AnyClass {
+        return CALayer.self
     }
 }
