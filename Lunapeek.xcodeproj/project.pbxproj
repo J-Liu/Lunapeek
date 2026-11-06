@@ -50,7 +50,6 @@
 		08D82BF63076F54F00A6F143 /* Exceptions for "Lunapeek" folder in "Embed Frameworks" phase from "Lunapeek" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
-				Frameworks/Mpv.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
 			};
 			buildPhase = 08D82BF53076F54E00A6F143 /* Embed Frameworks */;
 			membershipExceptions = (
@@ -66,7 +65,6 @@
 				Frameworks/Mbedcrypto.xcframework,
 				Frameworks/Mbedtls.xcframework,
 				Frameworks/Mbedx509.xcframework,
-				Frameworks/Mpv.xcframework,
 				Frameworks/Png16.xcframework,
 				Frameworks/Swresample.xcframework,
 				Frameworks/Swscale.xcframework,
