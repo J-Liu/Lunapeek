@@ -1666,12 +1666,16 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
 
         switch repeatMode {
         case .one:
-            // Repeat current video
-            Task {
-                await engine.seek(to: 0)
-                engine.play()
+            // Repeat current video - need to reload since .ended is terminal state
+            log("Repeating current video (reload)")
+            // For AetherEngine, .ended is terminal - need to stop and reload
+            engine.stop()
+            Task { [weak self] in
+                guard let self else { return }
+                // Small delay to ensure clean stop
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+                await self.setupAetherEngineWithCurrentURL()
             }
-            log("Repeating current video")
 
         case .all:
             // Check if there's a playlist
@@ -1688,10 +1692,13 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
                     updateNavigationButtons()
                 }
             } else {
-                // Single video, repeat it
-                Task {
-                    await engine.seek(to: 0)
-                    engine.play()
+                // Single video, repeat it - need to reload
+                log("Repeating single video (reload)")
+                engine.stop()
+                Task { [weak self] in
+                    guard let self else { return }
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    await self.setupAetherEngineWithCurrentURL()
                 }
             }
 
@@ -1704,6 +1711,44 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
             } else {
                 // No next item, close player
                 closeTapped()
+            }
+        }
+    }
+
+    /// Reload current URL in AetherEngine
+    private func setupAetherEngineWithCurrentURL() async {
+        guard let engine = engine else { return }
+
+        log("🎬 Reloading AetherEngine for: \(url.lastPathComponent)")
+
+        // Activate audio session
+        activateAudioSession()
+
+        // Bind view again
+        if let playerView = aetherPlayerView {
+            engine.bind(view: playerView)
+        }
+
+        // Set video gravity
+        engine.videoGravity = Settings.shared.defaultAspectRatio.videoGravity
+
+        // Load URL
+        do {
+            try await engine.load(url: url)
+            engine.play()
+            log("✅ AetherEngine reloaded and started")
+
+            // Reset audio track selection
+            if let firstTrack = engine.audioTracks.first {
+                selectedAudioTrackID = firstTrack.id
+            }
+
+            // Search and load external subtitles
+            await loadExternalSubtitles()
+        } catch {
+            log("❌ AetherEngine reload failed: \(error)")
+            DispatchQueue.main.async { [weak self] in
+                self?.showError(error)
             }
         }
     }
