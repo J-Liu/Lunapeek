@@ -193,7 +193,8 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
             switch exitBehavior {
             case .background:
                 // Continue playback in background - AetherEngine handles this natively
-                // Audio session should already be configured
+                // Log audio delivery state for debugging
+                log("📺 Background mode: state=\(engine.state), audioDelivery=\(engine.audioDelivery.rawValue)")
                 break
             case .pause:
                 // Already paused in willResignActive
