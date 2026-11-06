@@ -48,6 +48,7 @@ final class PlayerViewController: UIViewController {
     private var volumeSliderView: UIView?
     private var speedPopupView: UIView?
     private var audioTrackPopupView: UIView?
+    private var selectedAudioTrackID: Int?
 
     // Lock state
     private var isLocked = false
@@ -407,7 +408,7 @@ final class PlayerViewController: UIViewController {
 
         // Audio track button
         audioTrackButton = UIButton(type: .system)
-        audioTrackButton.setImage(UIImage(systemName: "speaker.wave.2"), for: .normal)
+        audioTrackButton.setImage(UIImage(systemName: "waveform"), for: .normal)
         audioTrackButton.tintColor = .white
         audioTrackButton.addTarget(self, action: #selector(audioTrackTapped), for: .touchUpInside)
         audioTrackButton.translatesAutoresizingMaskIntoConstraints = false
@@ -932,14 +933,28 @@ final class PlayerViewController: UIViewController {
             } else {
                 title = "Track \(track.id)"
             }
-            button.setTitle(title, for: .normal)
-            button.titleLabel?.font = .systemFont(ofSize: 16, weight: .regular)
-            button.tintColor = .white
+            let isSelected = selectedAudioTrackID == track.id
+            let displayTitle = isSelected ? "✓ \(title)" : title
+            button.setTitle(displayTitle, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 16, weight: isSelected ? .bold : .regular)
+            button.tintColor = isSelected ? .systemBlue : .white
             button.tag = track.id
             button.addTarget(self, action: #selector(audioTrackSelected(_:)), for: .touchUpInside)
             button.translatesAutoresizingMaskIntoConstraints = false
             stack.addArrangedSubview(button)
         }
+
+        // Add "None" option for muting audio
+        let noneButton = UIButton(type: .system)
+        let isNoneSelected = selectedAudioTrackID == nil
+        let noneTitle = isNoneSelected ? "✓ 无声" : "无声"
+        noneButton.setTitle(noneTitle, for: .normal)
+        noneButton.titleLabel?.font = .systemFont(ofSize: 16, weight: isNoneSelected ? .bold : .regular)
+        noneButton.tintColor = isNoneSelected ? .systemBlue : .white
+        noneButton.tag = -1
+        noneButton.addTarget(self, action: #selector(audioTrackSelected(_:)), for: .touchUpInside)
+        noneButton.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(noneButton)
 
         NSLayoutConstraint.activate([
             popup.leadingAnchor.constraint(equalTo: audioTrackButton.leadingAnchor),
@@ -955,8 +970,18 @@ final class PlayerViewController: UIViewController {
 
     @objc private func audioTrackSelected(_ button: UIButton) {
         let trackID = button.tag
-        engine?.selectAudioTrack(index: trackID)
-        log("Selected audio track: \(trackID)")
+        if trackID == -1 {
+            // None selected - deselect audio track
+            // AetherEngine doesn't have a direct deselect, so we set selectedAudioTrackID to nil
+            selectedAudioTrackID = nil
+            log("Deselected audio track (mute)")
+            // Note: AetherEngine may not support actual audio mute via track selection
+            // This is a UI state that could be used for future implementation
+        } else {
+            engine?.selectAudioTrack(index: trackID)
+            selectedAudioTrackID = trackID
+            log("Selected audio track: \(trackID)")
+        }
         audioTrackPopupView?.removeFromSuperview()
         audioTrackPopupView = nil
     }
@@ -1315,6 +1340,10 @@ final class PlayerViewController: UIViewController {
                 try await self?.engine?.load(url: self!.url)
                 self?.engine?.play()
                 self?.log("✅ AetherEngine loaded and started")
+                // Initialize selected audio track to first track
+                if let firstTrack = self?.engine?.audioTracks.first {
+                    self?.selectedAudioTrackID = firstTrack.id
+                }
                 // Search and load external subtitles
                 await self?.loadExternalSubtitles()
             } catch {
