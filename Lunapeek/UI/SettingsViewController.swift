@@ -50,7 +50,7 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 2: return 4 // File Browser
         case 3: return 1 // Video
         case 4: return 1 // Audio
-        case 5: return 3 // Playback
+        case 5: return 2 // Playback
         case 6: return 2 // About
         default: return 0
         }
@@ -139,11 +139,6 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
                 cell.detailTextLabel?.text = Settings.shared.repeatMode.displayName
                 cell.selectionStyle = .default
                 cell.accessoryType = .disclosureIndicator
-            case 2:
-                cell.textLabel?.text = NSLocalizedString("Exit Behavior", comment: "")
-                cell.detailTextLabel?.text = Settings.shared.exitBehavior.displayName
-                cell.selectionStyle = .default
-                cell.accessoryType = .disclosureIndicator
             default: break
             }
 
@@ -190,8 +185,6 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         case 5:
             if indexPath.row == 1 {
                 showRepeatModePicker()
-            } else if indexPath.row == 2 {
-                showExitBehaviorPicker()
             }
         case 6:
             if indexPath.row == 0 {
@@ -256,15 +249,6 @@ extension SettingsViewController: UITableViewDataSource, UITableViewDelegate {
         let selectedIndex = RepeatMode.allCases.firstIndex(of: Settings.shared.repeatMode) ?? 0
         showPicker(title: NSLocalizedString("Repeat Mode", comment: ""), items: items, selectedIndex: selectedIndex) { index in
             Settings.shared.repeatMode = RepeatMode.allCases[index]
-            self.tableView.reloadData()
-        }
-    }
-
-    private func showExitBehaviorPicker() {
-        let items = ExitBehavior.allCases.map { $0.displayName }
-        let selectedIndex = ExitBehavior.allCases.firstIndex(of: Settings.shared.exitBehavior) ?? 0
-        showPicker(title: NSLocalizedString("Exit Behavior", comment: ""), message: NSLocalizedString("What happens when you leave during video playback", comment: ""), items: items, selectedIndex: selectedIndex) { index in
-            Settings.shared.exitBehavior = ExitBehavior.allCases[index]
             self.tableView.reloadData()
         }
     }

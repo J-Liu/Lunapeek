@@ -165,8 +165,7 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     @objc private func appWillResignActive() {
-        // For pause mode, just pause (no PiP since pipController is not created)
-        guard Settings.shared.exitBehavior == .pause else { return }
+        // Always pause when leaving the app
 
         // Handle AetherEngine
         if let engine = engine {
@@ -187,61 +186,13 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     @objc private func appDidEnterBackground() {
-        // Handle AetherEngine
-        if let engine = engine {
-            let exitBehavior = Settings.shared.exitBehavior
-            switch exitBehavior {
-            case .background:
-                // Continue playback in background - AetherEngine handles this natively
-                // Log audio delivery state for debugging
-                log("📺 Background mode: state=\(engine.state), audioDelivery=\(engine.audioDelivery.rawValue)")
-                break
-            case .pause:
-                // Already paused in willResignActive
-                break
-            }
-            return
-        }
-
-        // Handle AVQueuePlayer
-        guard avQueuePlayer != nil else { return }
-
-        let exitBehavior = Settings.shared.exitBehavior
-        switch exitBehavior {
-        case .background:
-            // Remove player layer to allow background audio playback
-            avPlayerLayer?.removeFromSuperlayer()
-            avPlayerLayer = nil
-            // Ensure audio session is active for background playback
-            try? AVAudioSession.sharedInstance().setActive(true)
-            // Ensure now playing info is current for Dynamic Island
-            updateNowPlayingInfo()
-        case .pause:
-            // Already paused in willResignActive
-            break
-        }
+        // Playback is already paused in appWillResignActive
     }
 
     @objc private func appWillEnterForeground() {
-        // Restore player layer for background mode
-        if Settings.shared.exitBehavior == .background, avPlayerLayer == nil, let player = avQueuePlayer {
-            let playerLayer = AVPlayerLayer(player: player)
-            playerLayer.frame = videoView.bounds
-            playerLayer.videoGravity = Settings.shared.defaultAspectRatio.videoGravity
-            videoView.layer.addSublayer(playerLayer)
-            avPlayerLayer = playerLayer
-        }
-
-        // For AetherEngine, reactivate audio session if needed
-        if engine != nil {
-            try? AVAudioSession.sharedInstance().setActive(true)
-        }
-
-        // Update button state for pause mode
-        if Settings.shared.exitBehavior == .pause {
-            setPlayButtonIcon(isPlaying: false)
-            updateCenterButtons()
-        }
+        // Update button state (still paused)
+        setPlayButtonIcon(isPlaying: false)
+        updateCenterButtons()
     }
 
     private func setupVolumeObservation() {
@@ -1642,16 +1593,6 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
             centerPlayButton.setImage(image, for: .normal)
             setPlayButtonIcon(isPlaying: true)
         case .paused:
-            // If in background mode and should continue playing, resume playback
-            let isBackground = UIApplication.shared.applicationState == .background
-            if isBackground, Settings.shared.exitBehavior == .background, let engine = engine, engine.state == .paused {
-                log("📺 Resuming playback in background mode")
-                // Delay slightly to avoid rapid toggle
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                    self?.engine?.play()
-                }
-                return
-            }
             isPaused = true
             let image = UIImage(systemName: "play.fill")?
                 .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
@@ -1899,9 +1840,8 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     private func activateAudioSession() {
-        // Activate for background play setting OR background exit behavior
-        let shouldActivate = Settings.shared.backgroundPlay || Settings.shared.exitBehavior == .background
-        guard shouldActivate else { return }
+        // Activate audio session for playback
+        guard Settings.shared.backgroundPlay else { return }
 
         do {
             let session = AVAudioSession.sharedInstance()
@@ -1982,9 +1922,8 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
     }
 
     private func deactivateAudioSession() {
-        // Only deactivate if background play is disabled AND exit behavior is pause
-        let shouldDeactivate = !Settings.shared.backgroundPlay && Settings.shared.exitBehavior == .pause
-        guard shouldDeactivate else { return }
+        // Deactivate audio session if background play is disabled
+        guard !Settings.shared.backgroundPlay else { return }
 
         Task.detached(priority: .background) {
             do {

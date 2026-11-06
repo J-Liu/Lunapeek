@@ -20,7 +20,6 @@ final class Settings {
         static let backgroundPlay = "backgroundPlay"
         static let defaultAspectRatio = "defaultAspectRatio"
         static let repeatMode = "repeatMode"
-        static let exitBehavior = "exitBehavior"
         static let language = "language"
         static let theme = "theme"
     }
@@ -98,11 +97,6 @@ final class Settings {
         set { defaults.set(newValue.rawValue, forKey: Key.defaultAspectRatio) }
     }
 
-    var exitBehavior: ExitBehavior {
-        get { ExitBehavior(rawValue: defaults.string(forKey: Key.exitBehavior) ?? "background") ?? .background }
-        set { defaults.set(newValue.rawValue, forKey: Key.exitBehavior) }
-    }
-
     private init() {
         // Set defaults for boolean values (UserDefaults returns false for missing keys)
         if defaults.object(forKey: Key.backgroundPlay) == nil {
@@ -143,18 +137,6 @@ enum AspectRatio: String, CaseIterable {
         case .fit: return .resizeAspect
         case .fill: return .resizeAspectFill
         case .stretch: return .resize
-        }
-    }
-}
-
-enum ExitBehavior: String, CaseIterable {
-    case background = "background"
-    case pause = "pause"
-
-    var displayName: String {
-        switch self {
-        case .background: return NSLocalizedString("Background Play", comment: "")
-        case .pause: return NSLocalizedString("Pause", comment: "")
         }
     }
 }
