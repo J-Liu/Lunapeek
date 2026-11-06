@@ -83,10 +83,10 @@ public final class MPVPlayer {
         log("Setting options...")
         setOption("hwdec", value: "auto-safe")
         setOption("vo", value: "gpu")
-        setOption("gpu-context", value: "ios")
         setOption("vid", value: "auto")
         setOption("aid", value: "auto")
         setOption("keep-open", value: "yes")
+        setOption("msg-level", value: "all=debug")
 
         // Initialize
         log("Initializing mpv...")
@@ -101,6 +101,18 @@ public final class MPVPlayer {
             return
         }
         log("mpv initialized successfully")
+
+        // Query available VOs
+        var voList: UnsafeMutablePointer<CChar>?
+        let voResult = mpv_get_property(handle, "vo-configured", MPV_FORMAT_STRING, &voList)
+        log("vo-configured result: \(voResult)")
+
+        // Try to get video format info
+        var vidFormat: UnsafeMutablePointer<CChar>?
+        let fmtResult = mpv_get_property(handle, "video-format", MPV_FORMAT_STRING, &vidFormat)
+        if fmtResult >= 0, let fmt = vidFormat {
+            log("video-format: \(String(cString: fmt))")
+        }
 
         // Observe properties
         mpv_observe_property(handle, 0, "time-pos", MPV_FORMAT_DOUBLE)
@@ -254,6 +266,15 @@ public final class MPVPlayer {
         log("processEvent: \(eventName)")
 
         switch event.event_id {
+        case MPV_EVENT_LOG_MESSAGE:
+            if let data = event.data {
+                let logMsg = data.assumingMemoryBound(to: mpv_event_log_message.self).pointee
+                let prefix = String(cString: logMsg.prefix)
+                let level = String(cString: logMsg.level)
+                let text = String(cString: logMsg.text)
+                log("[mpv:\(prefix):\(level)] \(text.trimmingCharacters(in: .newlines))")
+            }
+
         case MPV_EVENT_FILE_LOADED:
             log("File loaded successfully")
             duration = getProperty("duration") ?? 0
