@@ -23,6 +23,7 @@ public final class MPVPlayer {
     public private(set) var state: MPVPlayerState = .idle
     public var onStateChanged: ((MPVPlayerState) -> Void)?
     public var onProgress: ((Double, Double) -> Void)?
+    public var logHandler: ((String) -> Void)?
 
     private var handle: OpaquePointer?
     private var playerView: MPVPlayerView?
@@ -35,6 +36,12 @@ public final class MPVPlayer {
     private var isSeeking = false
 
     public init() {}
+
+    private func log(_ message: String) {
+        let fullMessage = "🔵 MPVPlayer: \(message)"
+        logHandler?(fullMessage)
+        debugLog(fullMessage)
+    }
 
     deinit {
         stop()
@@ -52,6 +59,10 @@ public final class MPVPlayer {
 
     /// Open a file URL
     public func open(url: URL) {
+        log("open() called with URL: \(url.absoluteString)")
+        log("isFileURL: \(url.isFileURL)")
+        log("path: \(url.path)")
+
         self.url = url
         state = .loading
         onStateChanged?(.loading)
@@ -59,12 +70,15 @@ public final class MPVPlayer {
         // Create mpv handle
         handle = mpv_create()
         guard let handle = handle else {
+            log("ERROR: Failed to create mpv handle")
             state = .error("Failed to create mpv handle")
             onStateChanged?(.error("Failed to create mpv handle"))
             return
         }
+        log("mpv handle created")
 
         // Set options for iOS
+        log("Setting options...")
         setOption("hwdec", value: "auto-safe")
         setOption("vo", value: "gpu")
         setOption("vid", value: "auto")
@@ -72,15 +86,18 @@ public final class MPVPlayer {
         setOption("keep-open", value: "yes")
 
         // Initialize
+        log("Initializing mpv...")
         let initResult = mpv_initialize(handle)
         guard initResult >= 0 else {
             let error = String(cString: mpv_error_string(initResult))
+            log("ERROR: mpv_initialize failed with code \(initResult): \(error)")
             state = .error("mpv_initialize failed: \(error)")
             onStateChanged?(.error("mpv_initialize failed: \(error)"))
             mpv_destroy(handle)
             self.handle = nil
             return
         }
+        log("mpv initialized successfully")
 
         // Observe properties
         mpv_observe_property(handle, 0, "time-pos", MPV_FORMAT_DOUBLE)
@@ -94,9 +111,12 @@ public final class MPVPlayer {
             let player = Unmanaged<MPVPlayer>.fromOpaque(ctx).takeUnretainedValue()
             player.handleEvents()
         }, unsafeSelf)
+        log("Event callback set up")
 
         // Load file using loadfile command
         let path = url.isFileURL ? url.path : url.absoluteString
+        log("Loading file with path: \(path)")
+
         var args: [UnsafePointer<CChar>?] = [
             UnsafePointer(strdup("loadfile")),
             UnsafePointer(strdup(path)),
@@ -113,9 +133,12 @@ public final class MPVPlayer {
 
         if result < 0 {
             let error = String(cString: mpv_error_string(result))
+            log("ERROR: mpv_command failed with code \(result): \(error)")
             state = .error("Failed to load file: \(error)")
             onStateChanged?(.error("Failed to load file: \(error)"))
             stop()
+        } else {
+            log("mpv_command succeeded, waiting for file-loaded event")
         }
     }
 
@@ -209,10 +232,30 @@ public final class MPVPlayer {
     }
 
     private func processEvent(_ event: mpv_event) {
+        let eventName: String
+        switch event.event_id {
+        case MPV_EVENT_NONE: eventName = "MPV_EVENT_NONE"
+        case MPV_EVENT_SHUTDOWN: eventName = "MPV_EVENT_SHUTDOWN"
+        case MPV_EVENT_LOG_MESSAGE: eventName = "MPV_EVENT_LOG_MESSAGE"
+        case MPV_EVENT_GET_PROPERTY_REPLY: eventName = "MPV_EVENT_GET_PROPERTY_REPLY"
+        case MPV_EVENT_SET_PROPERTY_REPLY: eventName = "MPV_EVENT_SET_PROPERTY_REPLY"
+        case MPV_EVENT_COMMAND_REPLY: eventName = "MPV_EVENT_COMMAND_REPLY"
+        case MPV_EVENT_START_FILE: eventName = "MPV_EVENT_START_FILE"
+        case MPV_EVENT_END_FILE: eventName = "MPV_EVENT_END_FILE"
+        case MPV_EVENT_FILE_LOADED: eventName = "MPV_EVENT_FILE_LOADED"
+        case MPV_EVENT_SEEK: eventName = "MPV_EVENT_SEEK"
+        case MPV_EVENT_PLAYBACK_RESTART: eventName = "MPV_EVENT_PLAYBACK_RESTART"
+        case MPV_EVENT_PROPERTY_CHANGE: eventName = "MPV_EVENT_PROPERTY_CHANGE"
+        default: eventName = "UNKNOWN(\(event.event_id.rawValue))"
+        }
+        log("processEvent: \(eventName)")
+
         switch event.event_id {
         case MPV_EVENT_FILE_LOADED:
+            log("File loaded successfully")
             duration = getProperty("duration") ?? 0
             currentTime = 0
+            log("Duration: \(duration)s")
 
             DispatchQueue.main.async { [weak self] in
                 self?.state = .ready
@@ -231,15 +274,31 @@ public final class MPVPlayer {
 
         case MPV_EVENT_END_FILE:
             let reason = event.data.map { UnsafeRawPointer($0).load(as: mpv_end_file_reason.self) } ?? MPV_END_FILE_REASON_EOF
+            log("END_FILE event, reason: \(reason.rawValue)")
+
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
 
                 if reason == MPV_END_FILE_REASON_EOF {
+                    self.log("Playback ended normally (EOF)")
                     self.state = .ended
                     self.onStateChanged?(.ended)
                 } else if reason == MPV_END_FILE_REASON_ERROR {
-                    self.state = .error("Playback error")
-                    self.onStateChanged?(.error("Playback error"))
+                    // Get error code from mpv_end_file_reason structure
+                    let errorStruct = event.data.map { UnsafeRawPointer($0).assumingMemoryBound(to: mpv_event_end_file.self).pointee }
+                    let errorCode = errorStruct?.error ?? 0
+                    let errorStr = errorStruct.flatMap { String(cString: mpv_error_string($0.error)) } ?? "unknown"
+                    self.log("Playback error: code=\(errorCode), message=\(errorStr)")
+                    self.state = .error("Playback error: \(errorStr)")
+                    self.onStateChanged?(.error("Playback error: \(errorStr)"))
+                } else if reason == MPV_END_FILE_REASON_STOP {
+                    self.log("Playback stopped")
+                    self.state = .idle
+                    self.onStateChanged?(.idle)
+                } else if reason == MPV_END_FILE_REASON_QUIT {
+                    self.log("Playback quit")
+                    self.state = .idle
+                    self.onStateChanged?(.idle)
                 }
             }
 

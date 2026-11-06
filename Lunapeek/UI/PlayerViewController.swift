@@ -1179,6 +1179,11 @@ final class PlayerViewController: UIViewController {
         let player = MPVPlayer()
         mpvPlayer = player
 
+        // Set up log handler to show MPVPlayer logs in debug view
+        player.logHandler = { [weak self] message in
+            self?.log(message)
+        }
+
         // Add player view
         let playerView = player.view
         playerView.frame = videoView.bounds
