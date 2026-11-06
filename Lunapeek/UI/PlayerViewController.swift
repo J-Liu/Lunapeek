@@ -1642,6 +1642,16 @@ final class PlayerViewController: UIViewController, UIDocumentPickerDelegate {
             centerPlayButton.setImage(image, for: .normal)
             setPlayButtonIcon(isPlaying: true)
         case .paused:
+            // If in background mode and should continue playing, resume playback
+            let isBackground = UIApplication.shared.applicationState == .background
+            if isBackground, Settings.shared.exitBehavior == .background, let engine = engine, engine.state == .paused {
+                log("📺 Resuming playback in background mode")
+                // Delay slightly to avoid rapid toggle
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.engine?.play()
+                }
+                return
+            }
             isPaused = true
             let image = UIImage(systemName: "play.fill")?
                 .applyingSymbolConfiguration(.init(pointSize: 36, weight: .bold, scale: .large))
